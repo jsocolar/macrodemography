@@ -24,28 +24,28 @@ spp <- c("babwar", "boboli", "camwar", "carwre", "gycthr", "magwar", "phivir",
          "tenwar", "wlswar")
 spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI", 
               "TEWA", "WIWA")
-# # Subset to lower 48 and complete checklists.  Only build the sampling file once
-# # (i.e. for the first species). This dramatically reduces the computation
+# Subset to lower 48 and complete checklists.  Only build the sampling file once
+# (i.e. for the first species). This dramatically reduces the computation
 # for (i in seq_along(spp)) {
 #   output_path2 <- paste0(output_path, ebd_month, "/", spp_code[i])
 #   dir.create(output_path2)
 #   if (i == 1) {
-#     auk_ebd(paste0(ebd_path, ebd_month, "/ebd_US_", spp[i], "_rel", ebd_month, 
+#     auk_ebd(paste0(ebd_path, ebd_month, "/ebd_US_", spp[i], "_rel", ebd_month,
 #                    "/ebd_US_", spp[i], "_rel", ebd_month, ".txt"),
-#             paste0(ebd_path, ebd_month, "/ebd_sampling_rel", ebd_month, 
+#             paste0(ebd_path, ebd_month, "/ebd_sampling_rel", ebd_month,
 #                    "/ebd_sampling_rel", ebd_month, ".txt")) %>%
 #       auk_complete() %>%
 #       auk_state(state = L48) %>%
-#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                                "/L48_complete.txt"),
 #                  file_sampling = paste0(sampling_path, "/L48_complete.txt"),
 #                  overwrite = T)
 #   } else {
-#     auk_ebd(paste0(ebd_path, ebd_month, "/ebd_US_", spp[i], "_rel", ebd_month, 
+#     auk_ebd(paste0(ebd_path, ebd_month, "/ebd_US_", spp[i], "_rel", ebd_month,
 #                    "/ebd_US_", spp[i], "_rel", ebd_month, ".txt")) %>%
 #       auk_complete() %>%
 #       auk_state(state = L48) %>%
-#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                                "/L48_complete.txt"),
 #                  filter_sampling = F, overwrite = T)
 #   }
@@ -56,38 +56,38 @@ spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI",
 #   print(i)
 #   if (i == 1) {
 #     # Spring
-#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                           "/L48_complete.txt"),
 #                    paste0(sampling_path, "/L48_complete.txt")) %>%
-#       auk_date(date = c("*-02-01", "*-06-10")) %>% 
-#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_date(date = c("*-02-01", "*-06-10")) %>%
+#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                                "/L48_complete_spring.txt"),
-#                  file_sampling = paste0(sampling_path, 
+#                  file_sampling = paste0(sampling_path,
 #                                         "/L48_complete_spring.txt"),
 #                  overwrite = T)
 #     # Fall
-#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                    "/L48_complete.txt"),
 #             paste0(sampling_path, "/L48_complete.txt")) %>%
-#       auk_date(date = c("*-08-01", "*-11-30")) %>% 
-#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_date(date = c("*-08-01", "*-11-30")) %>%
+#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                                "/L48_complete_fall.txt"),
-#                  file_sampling = paste0(sampling_path, 
+#                  file_sampling = paste0(sampling_path,
 #                                         "/L48_complete_fall.txt"),
 #                  overwrite = T)
 #   } else {
 #     # Spring
-#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                           "/L48_complete.txt")) %>%
-#       auk_date(date = c("*-02-01", "*-06-10")) %>% 
-#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_date(date = c("*-02-01", "*-06-10")) %>%
+#       auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                                "/L48_complete_spring.txt"),
 #                  filter_sampling = F, overwrite = T)
 #     # Fall
-#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#     auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                           "/L48_complete.txt")) %>%
-#   auk_date(date = c("*-08-01", "*-11-30")) %>% 
-#   auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i], 
+#   auk_date(date = c("*-08-01", "*-11-30")) %>%
+#   auk_filter(file = paste0(output_path, ebd_month, "/", spp_code[i],
 #                            "/L48_complete_fall.txt"),
 #              filter_sampling = F, overwrite = T)
 #   }

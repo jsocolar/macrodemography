@@ -2,10 +2,19 @@
 # 285 km spacing and a 5-day window.
 source(paste0("/Users/jacob/Dropbox/Work/Code/macrodemography/data_format/",
               "ebird_raw_to_seasonal.R"))
-years <- 2006:2019
+years <- 2010:2019
 library(dggridR)
 library(sf)
 library(ggplot2)
+
+spp_data <- read.csv("/Users/jacob/Dropbox/Work/macrodemography/include_by_spp.csv")
+s_app <- read_sf("/Users/jacob/Dropbox/Work/macrodemography/masks/BLBW_mask.kmz")
+b_app <- read_sf("/Users/jacob/Dropbox/Work/macrodemography/masks/s_app_broad_mask.kmz")
+nowa <- read_sf("/Users/jacob/Dropbox/Work/macrodemography/masks/NOWA.kmz")
+
+### current place in code... need to properly crop to the right set of checklists before
+# doing extensive compuation for each species.
+
 dg6 <- dgconstruct(res=6)
 
 # A hack to determine all grid cells that overlap the continuous US.
@@ -17,6 +26,7 @@ conus_raster <- fasterize::fasterize(conus,
                                                     ymn =24, ymx = 50))
 conus_coords <- raster::as.data.frame(conus_raster, xy = T)
 conus_coords <- conus_coords[!is.na(conus_coords$layer), ]
+conus_coords <- conus_coords[conus_coords$x > -111 & conus_coords$y > 29, ]
 conus_cells <- unique(dgGEO_to_SEQNUM(dg6, conus_coords$x, conus_coords$y)[[1]])
 length(conus_cells)
 
@@ -45,6 +55,7 @@ seasons <- c("spring", "fall")
 cell_data <- list()
 for (i in seq_along(spp)) {
   cell_data[[i]] <- list()
+  sp_data <- spp_data[i,]
   names(cell_data)[i] <- spp_code[i]
   output_path_2 <- paste0(output_path, ebd_month, "/", spp_code[i], "/by_year")
   sampling_path_2 <- paste0(output_path, ebd_month, "/sampling/by_year")
@@ -59,14 +70,15 @@ for (i in seq_along(spp)) {
                           paste0(sampling_path_2, "/", seasons[s], "_", 
                                  years[j], ".txt"), collapse = T)
       zfd <- zfd[zfd$protocol_type %in% c("Stationary", "Area", "Traveling"), ]
+      zfd <- zfd[zfd$latitude > sp_data$min_lat & zfd$latitude < sp_data$max_lat, ]
       days <- as.POSIXlt(zfd$observation_date)$yday
       cells6 <- dgGEO_to_SEQNUM(dg6, zfd$longitude, zfd$latitude)$seqnum
       if (seasons[s] == "spring") {
-        tgrid <- round(days/5) - 5
-        tgrid_max <- 27
+        tgrid <- floor(days/7) - 3
+        tgrid_max <- 20
       } else if (seasons[s] == "fall") {
-        tgrid <- round(days/5) - 41
-        tgrid_max <- 22
+        tgrid <- round(days/7) - 29
+        tgrid_max <- 19
       }
       for (t in 1:tgrid_max) {
         cell_data[[i]][[j]][[s]][[t]] <- list()
@@ -86,7 +98,7 @@ for (i in seq_along(spp)) {
         }
       }
     }
-    saveRDS(cell_data, "/Users/jacob/Dropbox/Work/macrodemography/cell_data/cell_data_3Jun21.RDS")
+    saveRDS(cell_data, "/Users/jacob/Dropbox/Work/macrodemography/cell_data/cell_data_11Jun21.RDS")
   }
 }
 

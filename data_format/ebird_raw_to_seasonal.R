@@ -20,12 +20,16 @@ states <- ebird_states$state_code[which(ebird_states$country_code == "US")]
 L48 <- states[!(states %in% c("US-AK", "US-HI"))]
 
 years <- 2006:2020
-spp <- c("babwar", "boboli", "camwar", "carwre", "gycthr", "magwar", "phivir",
-         "tenwar", "wlswar")
-spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI", 
-              "TEWA", "WIWA")
-# Subset to lower 48 and complete checklists.  Only build the sampling file once
-# (i.e. for the first species). This dramatically reduces the computation
+spp <- c("babwar", "bkbcuc", "bkbwar", "boboli", "btbwar", "camwar", "canwar",
+         "carwre", "cerwar", "chswar", "clcspa", "foxspa", "gowwar", "gycthr", 
+         "magwar", "mouwar", "naswar", "norwat", "nstspa", "palwar", "phivir",
+         "robgro", "scatan", "tenwar", "wlswar")
+spp_code <- c("BBWA", "BBCU", "BLBW", "BOBO", "BTBW", "CMWA", "CAWA", 
+              "CARW", "CERW", "CSWA", "CCSP", "FOSP", "GWWA", "GCTH", 
+              "MAWA", "MOWA", "NAWA", "NOWA", "NESP", "PAWA", "PHVI", 
+              "RBGR", "SCTA", "TEWA", "WIWA")
+# # Subset to lower 48 and complete checklists.  Only build the sampling file once
+# # (i.e. for the first species). This dramatically reduces the computation
 # for (i in seq_along(spp)) {
 #   output_path2 <- paste0(output_path, ebd_month, "/", spp_code[i])
 #   dir.create(output_path2)
@@ -50,7 +54,7 @@ spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI",
 #                  filter_sampling = F, overwrite = T)
 #   }
 # }
-
+# 
 # # Restrict to spring and fall periods
 # for (i in seq_along(spp)) {
 #   print(i)
@@ -92,7 +96,7 @@ spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI",
 #              filter_sampling = F, overwrite = T)
 #   }
 # }
-
+# 
 # # Extract data by year.
 # for (i in seq_along(spp)) {
 #   output_path_2 <- paste0(output_path, ebd_month, "/", spp_code[i], "/by_year")
@@ -104,32 +108,32 @@ spp_code <- c("BBWA", "BOBO", "CMWA", "CARW", "GCTH", "MAWA", "PHVI",
 #     print(c(i, y))
 #     if (i == 1) {
 #       # Spring
-#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                             "/L48_complete_spring.txt"),
 #               paste0(sampling_path, "/L48_complete_spring.txt")) %>%
-#         auk_year(y) %>% 
+#         auk_year(y) %>%
 #         auk_filter(file = paste0(output_path_2, "/spring_", y, ".txt"),
 #                    file_sampling = paste0(sampling_path_2, "/spring_", y, ".txt"),
 #                    overwrite = T)
 #       # Fall
-#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                      "/L48_complete_fall.txt"),
 #               paste0(sampling_path, "/L48_complete_fall.txt")) %>%
-#         auk_year(y) %>% 
+#         auk_year(y) %>%
 #         auk_filter(file = paste0(output_path_2, "/fall_", y, ".txt"),
 #                    file_sampling = paste0(sampling_path_2, "/fall_", y, ".txt"),
 #                    overwrite = T)
 #     } else {
 #       # Spring
-#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                      "/L48_complete_spring.txt")) %>%
-#         auk_year(y) %>% 
+#         auk_year(y) %>%
 #         auk_filter(file = paste0(output_path_2, "/spring_", y, ".txt"),
 #                    filter_sampling = F, overwrite = T)
 #       # Fall
-#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i], 
+#       auk_ebd(paste0(output_path, ebd_month, "/", spp_code[i],
 #                      "/L48_complete_fall.txt")) %>%
-#         auk_year(y) %>% 
+#         auk_year(y) %>%
 #         auk_filter(file = paste0(output_path_2, "/fall_", y, ".txt"),
 #                    filter_sampling = F, overwrite = T)
 #     }

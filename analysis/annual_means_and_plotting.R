@@ -85,13 +85,23 @@ for (i in seq_along(spp_code)) {
   if (sp_data$lat_divide) {
     out_list <- list()
     split_point <- sp_data$min_lat + (sp_data$max_lat - sp_data$min_lat)/2
-    cells_n <- conus_cells$cell[conus_cells$lat > split_point]
-    cells_s <- conus_cells$cell[conus_cells$lat < split_point]
+    cells_n <- conus_cells$cell[conus_cells$lat > split_point &
+                                  conus_cells$lat < sp_data$max_lat &
+                                  conus_cells$lon > sp_data$min_lon_1 &
+                                  conus_cells$lon < sp_data$max_lon]
+    cells_s <- conus_cells$cell[conus_cells$lat < split_point &
+                                  conus_cells$lat > sp_data$min_lat &
+                                  conus_cells$lon > sp_data$min_lon_2 &
+                                  conus_cells$lon < sp_data$max_lon]
     out_list$north <- get_means(cell_data, sp_code, cells_n)
     out_list$south <- get_means(cell_data, sp_code, cells_s)
     sp_summaries[[i]] <- out_list
   } else {
-    sp_summaries[[i]] <- get_means(cell_data, sp_code, conus_cells$cell)
+    cells_a <- conus_cells$cell[conus_cells$lat > sp_data$min_lat &
+                                  conus_cells$lat < sp_data$max_lat &
+                                  conus_cells$lon > sp_data$min_lon_1 &
+                                  conus_cells$lon < sp_data$max_lon]
+    sp_summaries[[i]] <- get_means(cell_data, sp_code, cells_a)
   }
 }
 

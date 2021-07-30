@@ -34,13 +34,10 @@ mean_of_stixels <- function(sp_yr, season, cells) {
   vec <- vector()
   counter <- 0
   for(i in seq_along(cells)) {
-    if (season == "spring") {
-      tgrid_max <- 20
+    if (season == "summer") {
+      tgrid_max <- 10
       sp_yr_s <- sp_yr[[1]]
-    } else if (season == "fall") {
-      tgrid_max <- 19
-      sp_yr_s <- sp_yr[[2]]
-    }
+    } 
     for(j in 1:tgrid_max){
       sp_yr_s_t <- sp_yr_s[[j]]
       for(k in seq_along(cells)){
@@ -54,14 +51,13 @@ mean_of_stixels <- function(sp_yr, season, cells) {
 
 get_means <- function(cell_data, sp_code, cells) {
   the_data <- cell_data[[which(spp_code == sp_code)]]
-  spring_raw <- fall_raw <- vector()
+  summer_raw <- vector()
   for (i in seq_along(years)) {
-    spring_raw[i] <- mean_of_stixels(the_data[[i]], "spring", cells)
-    fall_raw[i] <- mean_of_stixels(the_data[[i]], "fall", cells)
+    summer_raw[i] <- mean_of_stixels(the_data[[i]], "summer", cells)
   }
-  out <- data.frame(means = c(rbind(spring_raw, fall_raw)), 
-                              yr = .5*(1:(length(spring_raw) + length(fall_raw))),
-                              season = rep(c("spring", "fall"), length(spring_raw)))
+  out <- data.frame(means = summer_raw, 
+                    yr = (1:(length(summer_raw))),
+                    season = rep("summer", length(summer_raw)))
   out$ratios <- log(c(stocks::ratios(out$means), NA))
   out$year_ratios <- NA
   for (i in seq_len(nrow(out))) {
@@ -72,42 +68,23 @@ get_means <- function(cell_data, sp_code, cells) {
   out
 }
 
-years <- 2010:2019
-cell_data <- readRDS("/Users/JacobSocolar/Dropbox/Work/macrodemography/cell_data/cell_data_11Jun21.RDS")
-spp_data <- read.csv("/Users/jacob/Dropbox/Work/macrodemography/include_by_spp.csv")
-spp_code <- spp_data$species
-spp_code <- "TEWA"
+years <- 2006:2020
+cell_data <- readRDS("/Users/jacob/Dropbox/Work/macrodemography/cell_data/cell_data_woth_summer.RDS")
+spp_code <- "WOTH"
 sp_summaries <- vector(mode = "list", length = length(spp_code))
 names(sp_summaries) <- spp_code
 for (i in seq_along(spp_code)) {
   sp_code <- spp_code[i]
   print(sp_code)
-  sp_data <- spp_data[spp_data$species == sp_code, ]
-  if (sp_data$lat_divide) {
-    out_list <- list()
-    split_point <- sp_data$min_lat + (sp_data$max_lat - sp_data$min_lat)/2
-    cells_n <- conus_cells$cell[conus_cells$lat > split_point &
-                                  conus_cells$lat < sp_data$max_lat &
-                                  conus_cells$lon > sp_data$min_lon_1 &
-                                  conus_cells$lon < sp_data$max_lon]
-    cells_s <- conus_cells$cell[conus_cells$lat < split_point &
-                                  conus_cells$lat > sp_data$min_lat &
-                                  conus_cells$lon > sp_data$min_lon_2 &
-                                  conus_cells$lon < sp_data$max_lon]
-    out_list$north <- get_means(cell_data, sp_code, cells_n)
-    out_list$south <- get_means(cell_data, sp_code, cells_s)
-    sp_summaries[[i]] <- out_list
-  } else {
-    cells_a <- conus_cells$cell[conus_cells$lat > sp_data$min_lat &
-                                  conus_cells$lat < sp_data$max_lat &
-                                  conus_cells$lon > sp_data$min_lon_1 &
-                                  conus_cells$lon < sp_data$max_lon]
+  
+    cells_a <- conus_cells$cell
     sp_summaries[[i]] <- get_means(cell_data, sp_code, cells_a)
-  }
 }
 
 
 ##### Plotting #####
+plot((2005+sp_summaries$WOTH$yr), sp_summaries$WOTH$means/sp_summaries$WOTH$means[2])
+
 
 get_color <- function(strat, summaries) {
   color_n <- c("purple", "orange")
@@ -182,7 +159,7 @@ plot_ratio_br <- function(){
        col = get_color("north", sp_sum_n),
        pch = 16, ylim = c(min(c(sp_sum_n$ratios,
                                 sp_sum_s$ratios)),max(c(sp_sum_n$ratios,
-                                  sp_sum_s$ratios))),
+                                                        sp_sum_s$ratios))),
        main = spp_code[i])
   
   points(ratios ~ yr, data = sp_sum_s, 
@@ -196,7 +173,7 @@ plot_ratio_wi <- function(){
        col = get_color("north", sp_sum_n),
        pch = 16, ylim = c(min(c(sp_sum_n$ratios,
                                 sp_sum_s$ratios), na.rm = T),max(c(sp_sum_n$ratios,
-                                                        sp_sum_s$ratios), na.rm=T)),
+                                                                   sp_sum_s$ratios), na.rm=T)),
        main = spp_code[i])
   
   points(ratios ~ yr, data = sp_sum_s, 

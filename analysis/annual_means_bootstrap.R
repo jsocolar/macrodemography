@@ -1,7 +1,14 @@
 library(dggridR)
 library(sf)
 library(ggplot2)
+library(data.table)
 dg6 <- dgconstruct(res=6)
+dg11 <- dgconstruct(res=11)
+
+years <- 2010:2019
+cell_data <- readRDS("/Users/JacobSocolar/Dropbox/Work/macrodemography/cell_data/cell_data_dg11_22Jun21.RDS")
+spp_data <- read.csv("/Users/jacobSocolar/Dropbox/Work/macrodemography/include_by_spp.csv")
+spp_code <- spp_data$species
 
 # A hack to determine all grid cells that overlap the continuous US.
 # Surely there's a better way...
@@ -16,95 +23,134 @@ conus_cells <- data.frame(cell = unique(dgGEO_to_SEQNUM(dg6, conus_coords$x, con
 conus_cells$lat <- dgSEQNUM_to_GEO(dg6, conus_cells$cell)$lat_deg
 conus_cells$lon <- dgSEQNUM_to_GEO(dg6, conus_cells$cell)$lon_deg
 
+conus_cells11 <- data.frame(cell = unique(dgGEO_to_SEQNUM(dg11, conus_coords$x, conus_coords$y)[[1]]))
+conus_cells11$lat <- dgSEQNUM_to_GEO(dg11, conus_cells11$cell)$lat_deg
+conus_cells11$lon <- dgSEQNUM_to_GEO(dg11, conus_cells11$cell)$lon_deg
+conus_cells11$cell6 <- dgGEO_to_SEQNUM(dg6, conus_cells11$lon, conus_cells11$lat)[[1]]
 
-stixel_mean <- function(cell_data_st){
-  if (cell_data_st$n == 0) {
+# Get mean for a given (small) stixel
+stixel_mean_11 <- function(x){
+  if (x[which(names(cdijst) == "N")] == 0) {
     return(NA)
-  } else if (cell_data_st$n_x + cell_data_st$n_value == 0) {
+  } else if (x[which(names(cdijst) == "n_x")] + x[which(names(cdijst) == "n_positive")] == 0) {
     return(0)
-  } else if (cell_data_st$n_value == 0) {
-    return(weighted.mean(x = c(0,2), w = c(cell_data_st$n_z, cell_data_st$n_x)))
+  } else if (x[which(names(cdijst) == "n_positive")] == 0) {
+    return(weighted.mean(x = c(0,2), w = c(x[which(names(cdijst) == "n_z")], x[which(names(cdijst) == "n_x")])))
   } else {
-    n_z_rescaled <- cell_data_st$n_z * cell_data_st$n_value / (cell_data_st$n_value + cell_data_st$n_x)
-    return(weighted.mean(x = c(0, cell_data_st$mean_positive), w = c(n_z_rescaled, cell_data_st$n_value)))
+    n_z_rescaled <- x[which(names(cdijst) == "n_z")] * x[which(names(cdijst) == "n_positive")] / (x[which(names(cdijst) == "n_positive")] + x[which(names(cdijst) == "n_x")])
+    return(weighted.mean(x = c(0, x[which(names(cdijst) == "mean_positive")]), w = c(n_z_rescaled, x[which(names(cdijst) == "n_positive")])))
   }
 }
 
-mean_of_stixels <- function(sp_yr, season, cells) {
+tgrid_max <- c(19, 18)
+
+# Add the small stixel means to cell_data
+for (i in seq_along(spp_code)) {
+  for (j in seq_along(years)) {
+    for (s in 1:2) {
+      for (t in 1:tgrid_max[s]) {
+        print(c(i,j,s,t))
+        cdijst <- cell_data[[i]][[j]][[s]][[t]]
+        if(nrow(cdijst > 0)){
+          cell_data[[i]][[j]][[s]][[t]]$stixel_mean <- unlist(apply(cdijst, 1, stixel_mean_11))
+        }
+      }
+    }
+  }
+}
+
+
+mean_of_stixels_rep <- function(sp, yr, season, cells6) {
   vec <- vector()
   counter <- 0
-  for(i in seq_along(cells)) {
+  for(i in seq_along(cells6)) {
     if (season == "spring") {
-      tgrid_max <- 20
-      sp_yr_s <- sp_yr[[1]]
-    } else if (season == "fall") {
       tgrid_max <- 19
-      sp_yr_s <- sp_yr[[2]]
+    } else if (season == "fall") {
+      tgrid_max <- 18
     }
+    sp_yr_s <- cell_data[[sp]][[paste0("year_", yr)]][[season]]
     for(j in 1:tgrid_max){
       sp_yr_s_t <- sp_yr_s[[j]]
-      for(k in seq_along(cells)){
-        counter <- counter + 1
-        vec[counter] <- stixel_mean(sp_yr_s_t[[which(conus_cells == cells[k])]])
+        if(nrow(sp_yr_s_t) != 0) {
+          counter <- counter + 1
+          the_rows <- sp_yr_s_t$cells11 %in% conus_cells11$cell[conus_cells11$cell6 == cells6[i]]
+          vec[counter] <- weighted.mean(sp_yr_s_t$stixel_mean[the_rows],
+                                        w = gtools::rdirichlet(1, rep(1, sum(sp_yr_s_t$cells11 %in% conus_cells11$cell[conus_cells11$cell6 == cells6[i]]))))
       }
     }
   }
   return(mean(vec, na.rm = T))
 }
 
-get_means <- function(cell_data, sp_code, cells) {
-  the_data <- cell_data[[which(spp_code == sp_code)]]
-  spring_raw <- fall_raw <- vector()
-  for (i in seq_along(years)) {
-    spring_raw[i] <- mean_of_stixels(the_data[[i]], "spring", cells)
-    fall_raw[i] <- mean_of_stixels(the_data[[i]], "fall", cells)
-  }
-  out <- data.frame(means = c(rbind(spring_raw, fall_raw)), 
-                              yr = .5*(1:(length(spring_raw) + length(fall_raw))),
-                              season = rep(c("spring", "fall"), length(spring_raw)))
-  out$ratios <- log(c(stocks::ratios(out$means), NA))
-  out$year_ratios <- NA
-  for (i in seq_len(nrow(out))) {
-    if (i <= (nrow(out) - 1)) {
-      out$year_ratios[i] <- out$ratios[i] + out$ratios[i+1]
+
+
+seasons <- c("spring", "fall")
+cells_6_all <- unique(conus_cells11$cell6)
+sp_code <- "TEWA"
+sp_data <- spp_data[spp_data$species == sp_code, ]
+
+split_point <- sp_data$min_lat + (sp_data$max_lat - sp_data$min_lat)/2
+cells_n <- conus_cells$cell[conus_cells$lat > split_point &
+                              conus_cells$lat < sp_data$max_lat &
+                              conus_cells$lon > sp_data$min_lon_1 &
+                              conus_cells$lon < sp_data$max_lon]
+cells_s <- conus_cells$cell[conus_cells$lat < split_point &
+                              conus_cells$lat > sp_data$min_lat &
+                              conus_cells$lon > sp_data$min_lon_2 &
+                              conus_cells$lon < sp_data$max_lon]
+TEWA_means_n <- list()
+for(y in seq_along(years)) {
+  yr <- years[y]
+  TEWA_means_n[[y]] <- list()
+  for(s in 1:2) {
+    season <- seasons[s]
+    TEWA_means_n[[y]][[s]] <- vector()
+    for(i in 1:100){
+      print(c(y, s, i))
+      TEWA_means_n[[y]][[s]][i] <- mean_of_stixels_rep(sp_code, yr, season, cells_n)
     }
   }
-  out
 }
 
-years <- 2010:2019
-cell_data <- readRDS("/Users/JacobSocolar/Dropbox/Work/macrodemography/cell_data/cell_data_11Jun21.RDS")
-spp_data <- read.csv("/Users/jacob/Dropbox/Work/macrodemography/include_by_spp.csv")
-spp_code <- spp_data$species
-spp_code <- "TEWA"
-sp_summaries <- vector(mode = "list", length = length(spp_code))
-names(sp_summaries) <- spp_code
-for (i in seq_along(spp_code)) {
-  sp_code <- spp_code[i]
-  print(sp_code)
-  sp_data <- spp_data[spp_data$species == sp_code, ]
-  if (sp_data$lat_divide) {
-    out_list <- list()
-    split_point <- sp_data$min_lat + (sp_data$max_lat - sp_data$min_lat)/2
-    cells_n <- conus_cells$cell[conus_cells$lat > split_point &
-                                  conus_cells$lat < sp_data$max_lat &
-                                  conus_cells$lon > sp_data$min_lon_1 &
-                                  conus_cells$lon < sp_data$max_lon]
-    cells_s <- conus_cells$cell[conus_cells$lat < split_point &
-                                  conus_cells$lat > sp_data$min_lat &
-                                  conus_cells$lon > sp_data$min_lon_2 &
-                                  conus_cells$lon < sp_data$max_lon]
-    out_list$north <- get_means(cell_data, sp_code, cells_n)
-    out_list$south <- get_means(cell_data, sp_code, cells_s)
-    sp_summaries[[i]] <- out_list
-  } else {
-    cells_a <- conus_cells$cell[conus_cells$lat > sp_data$min_lat &
-                                  conus_cells$lat < sp_data$max_lat &
-                                  conus_cells$lon > sp_data$min_lon_1 &
-                                  conus_cells$lon < sp_data$max_lon]
-    sp_summaries[[i]] <- get_means(cell_data, sp_code, cells_a)
+TEWA_means_s <- list()
+for(y in seq_along(years)) {
+  yr <- years[y]
+  TEWA_means_s[[y]] <- list()
+  for(s in 1:2) {
+    season <- seasons[s]
+    TEWA_means_s[[y]][[s]] <- vector()
+    for(i in 1:100){
+      print(c(y, s, i))
+      TEWA_means_s[[y]][[s]][i] <- mean_of_stixels_rep(sp_code, yr, season, cells_s)
+    }
   }
 }
+
+TMS <- TMN <- data.frame(rep = c(1:100))
+counter <- 1
+for (y in seq_along(years)) {
+  for (s in 1:2) {
+    counter <- counter + 1
+    TMS[,counter] <- TEWA_means_s[[y]][[s]]
+    TMN[,counter] <- TEWA_means_n[[y]][[s]]
+  }
+}
+
+north_ratios <- log(stocks::ratios(as.numeric(TMN[1,2:21])))
+for(i in 2:99) { north_ratios <- rbind(north_ratios, log(stocks::ratios(as.numeric(TMN[i,2:21]))))}
+
+south_ratios <- log(stocks::ratios(as.numeric(TMS[1,2:21])))
+for(i in 2:99) { south_ratios <- rbind(south_ratios, log(stocks::ratios(as.numeric(TMS[i,2:21]))))}
+
+plot(1,1, xlim = c(-2,2), ylim = c(-2,2), type = 'n', xlab = "ratio: south", ylab = "ratio: north", asp =1)
+for (i in 1:19) {
+  if (floor(i/2)==i/2) {mc <- "blue"} else {mc <- "coral"}
+  lines(x = rep(quantile(south_ratios[,i], .5), 2), y = quantile(north_ratios[,i], c(.1,.9)), col = mc)
+  lines(x = quantile(south_ratios[,i], c(.1,.9)), y = rep(quantile(north_ratios[,i], .5), 2), col = mc)
+}
+
+
 
 
 ##### Plotting #####
@@ -182,7 +228,7 @@ plot_ratio_br <- function(){
        col = get_color("north", sp_sum_n),
        pch = 16, ylim = c(min(c(sp_sum_n$ratios,
                                 sp_sum_s$ratios)),max(c(sp_sum_n$ratios,
-                                  sp_sum_s$ratios))),
+                                                        sp_sum_s$ratios))),
        main = spp_code[i])
   
   points(ratios ~ yr, data = sp_sum_s, 
@@ -196,7 +242,7 @@ plot_ratio_wi <- function(){
        col = get_color("north", sp_sum_n),
        pch = 16, ylim = c(min(c(sp_sum_n$ratios,
                                 sp_sum_s$ratios), na.rm = T),max(c(sp_sum_n$ratios,
-                                                        sp_sum_s$ratios), na.rm=T)),
+                                                                   sp_sum_s$ratios), na.rm=T)),
        main = spp_code[i])
   
   points(ratios ~ yr, data = sp_sum_s, 

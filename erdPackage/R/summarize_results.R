@@ -128,11 +128,14 @@ plot_one_summary <- function (results_summary, speed_data_spring = NULL, speed_d
 #' @param results_summary_s summary for the southern region
 #' @export
 plot_ns_summary <- function (results_summary_n, results_summary_s) {
+  if(length(results_summary_n$mean_spring) != length(results_summary_s$mean_spring)){
+    stop("input summaries have different numbers of years")
+  }
   plot(results_summary_n$mean_spring, xlab = "year", ylab = "index", 
        ylim = c(min(c(results_summary_n$lci_spring, results_summary_s$lci_spring)), 
                 max(c(results_summary_s$uci_spring, results_summary_s$uci_spring))),
        main = "spring index")
-  for(i in 1:length(results_summary$mean_spring)) {
+  for(i in 1:length(results_summary_n$mean_spring)) {
     points(i+.2, results_summary_s$mean_spring[i], pch = 16, col = "darkgoldenrod2")
     lines(c(i,i), c(results_summary_n$lci_spring[i], results_summary_n$uci_spring[i]), col = "darkmagenta")
     lines(c(i+.2,i+.2), c(results_summary_s$lci_spring[i], results_summary_s$uci_spring[i]), col = "darkgoldenrod2")
@@ -142,7 +145,7 @@ plot_ns_summary <- function (results_summary_n, results_summary_s) {
        ylim = c(min(c(results_summary_n$lci_fall, results_summary_s$lci_fall)), 
                 max(c(results_summary_s$uci_fall, results_summary_s$uci_fall))),
        main = "fall index")
-  for(i in 1:length(results_summary$mean_fall)) {
+  for(i in 1:length(results_summary_n$mean_fall)) {
     points(i+.2, results_summary_s$mean_fall[i], pch = 16, col = "darkgoldenrod2")
     lines(c(i,i), c(results_summary_n$lci_fall[i], results_summary_n$uci_fall[i]), col = "darkmagenta")
     lines(c(i+.2,i+.2), c(results_summary_s$lci_fall[i], results_summary_s$uci_fall[i]), col = "darkgoldenrod2")
@@ -152,7 +155,7 @@ plot_ns_summary <- function (results_summary_n, results_summary_s) {
        ylim = c(min(c(results_summary_n$lci_lrat, results_summary_s$lci_lrat)), 
                 max(c(results_summary_n$uci_lrat, results_summary_s$uci_lrat))),
        main = "log_ratios")
-  for (i in 1:length(results_summary$mean_lrat)) {
+  for (i in 1:length(results_summary_n$mean_lrat)) {
     points(i+.2, results_summary_s$mean_lrat[i], pch = 16, col = "darkgoldenrod2")
     lines(c(i,i), c(results_summary_n$lci_lrat[i], results_summary_n$uci_lrat[i]), col = "darkmagenta")
     lines(c(i+.2,i+.2), c(results_summary_s$lci_lrat[i], results_summary_s$uci_lrat[i]), col = "darkgoldenrod2")

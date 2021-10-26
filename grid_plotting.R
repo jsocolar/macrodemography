@@ -30,8 +30,25 @@ conus_cells11$cell6 <- dgGEO_to_SEQNUM(dg6, conus_cells11$lon, conus_cells11$lat
 
 cc11 <- conus_cells11[conus_cells11$cell6 == 700,]
 
+
 # This hack works for now
-p <- ggplot() + geom_sf(data = conus, fill = "gray50", col = "gray50")
+p <- ggplot() + geom_sf(data = conus, fill = "gray50", col = "gray50") + scale_x_continuous(limits = c(-92, -67))
+poly_colors <- c("goldenrod", "darkmagenta")
+pb <- txtProgressBar(min = 1, max = length(conus_cells$cell), initial = 1, style = 3)
+for (i in seq_along(conus_cells$cell)) {
+  setTxtProgressBar(pb, i)
+  grid <- dgcellstogrid(dg6, conus_cells$cell[i])
+  meanlat <- mean(grid$lat)
+  meanlon <- mean(grid$long)
+  if(meanlat > 29 & meanlat < 44 & meanlon > -100){
+    p <- p + geom_path(data = grid, aes(x = long, y = lat),
+                       col = "black", alpha = .3) +
+      geom_polygon(data = grid, aes(x = long, y = lat),
+                   col = poly_colors[(meanlat>37)+1], alpha = .3)
+  }
+}
+p
+
 pb <- txtProgressBar(min = 1, max = length(cc11$cell), initial = 1, style = 3)
 for (i in seq_along(cc11$cell)) {
   setTxtProgressBar(pb, i)
@@ -40,20 +57,6 @@ for (i in seq_along(cc11$cell)) {
                      col = "black", alpha = .3) +
     geom_polygon(data = grid, aes(x = long, y = lat),
                  col = "dodgerblue", alpha = .3)
-  
-}
-p
-
-# This hack works for now
-p <- ggplot() + geom_sf(data = conus, fill = "gray50", col = "gray50")
-pb <- txtProgressBar(min = 1, max = length(conus_cells$cell), initial = 1, style = 3)
-for (i in seq_along(conus_cells$cell)) {
-  setTxtProgressBar(pb, i)
-  grid <- dgcellstogrid(dg6, conus_cells$cell[i])
-  p <- p + geom_path(data = grid, aes(x = long, y = lat),
-                     col = "black", alpha = .3) +
-    geom_polygon(data = grid, aes(x = long, y = lat),
-                 col = "goldenrod", alpha = .3)
   
 }
 p

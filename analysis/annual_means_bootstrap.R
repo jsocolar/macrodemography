@@ -6,7 +6,7 @@ dg6 <- dgconstruct(res=6)
 dg11 <- dgconstruct(res=11)
 
 years <- 2010:2019
-cell_data <- readRDS("/Users/JacobSocolar/Dropbox/Work/macrodemography/cell_data/cell_data_dg11_22Jun21.RDS")
+cell_data <- readRDS("/Users/Jacob/Dropbox/Work/macrodemography/cell_data/cell_data_dg11_22Jun21.RDS")
 spp_data <- read.csv("/Users/jacobSocolar/Dropbox/Work/macrodemography/include_by_spp.csv")
 spp_code <- spp_data$species
 

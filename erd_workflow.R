@@ -7,7 +7,6 @@ if(socolar.desktop){
 }
 setwd(dir.path)
 
-
 roxygen2::roxygenise("Code/macrodemography/erdPackage")
 
 install.packages("Code/macrodemography/erdPackage", 
@@ -151,19 +150,34 @@ effort_lim
 
 species <- 1
 cci <- 2
-effort <- 1
+effort <- 2
 dev.off()
 
 # North
 ssn <- summarize_avg_and_rep(avg_and_rep_spring_north[[species]][[cci]][[effort]], avg_and_rep_fall_north[[species]][[cci]][[effort]], 
-                             year_remove=4, remove = T, min_small = 5, min_list = 1, ci = .8)
+                             year_remove=4, remove = F, min_small = 5, min_list = 1, ci = .8)
 plot_one_summary(ssn, mp_spring_north[[species]][[cci]][[effort]], mp_fall_north[[species]][[cci]][[effort]])
 
 # South
 sss <- summarize_avg_and_rep(avg_and_rep_spring_south[[species]][[cci]][[effort]], avg_and_rep_fall_south[[species]][[cci]][[effort]],
-                             year_remove=4, remove = T, min_small = 5, min_list = 1, ci = .8)
-#plot_one_summary(sss, mp_spring_south[[species]][[cci]][[effort]], mp_fall_south[[species]][[cci]][[effort]])
+                             year_remove=4, remove = F, min_small = 5, min_list = 1, ci = .8)
+plot_one_summary(sss, mp_spring_south[[species]][[cci]][[effort]], mp_fall_south[[species]][[cci]][[effort]])
 
 # Both
 plot_ns_summary(ssn, sss)
+
+summer <- readRDS("macrodemography/erd_workflow/carw_avg_and_rep_summer.RDS")
+
+cci <- 2
+effort <- 2
+wth <- summarize_avg_and_rep(summer[[cci]][[effort]], summer[[cci]][[effort]], year_remove = 1)
+
+
+plot(wth$mean_spring ~ c(2013:2019), xlab = "year", ylab = "index",
+     ylim = c(min(wth$lci_spring), max(wth$uci_spring)),
+     main = "spring index")
+for(i in 1:(length(wth$mean_spring))) {
+  lines(c(i+2012,i+2012), c(wth$lci_spring[i], wth$uci_spring[i]))
+}
+
 

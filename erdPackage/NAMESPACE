@@ -2,6 +2,7 @@
 
 export(get_abun)
 export(get_grid_data)
+export(import_checklists)
 export(import_from_erd)
 export(median_passage)
 export(plot_ns_summary)

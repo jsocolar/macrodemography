@@ -42,6 +42,7 @@ import_from_erd <- function(sp_code, erd_path = "/Users/jacobsocolar/Dropbox/Wor
 #' Import checklists data from the erd
 #' @param erd_path The path to the eBird reference dataset .db file
 #' @return a data.frame of the checklists
+#' @export
 import_checklists <- function(erd_path = "/Users/jacobsocolar/Dropbox/Work/macrodemography/erd/erd.db") {
   db <- DBI::dbConnect(RSQLite::SQLite(), erd_path)
   checklists_query <- DBI::dbSendQuery(db, 

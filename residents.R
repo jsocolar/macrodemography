@@ -302,8 +302,8 @@ for(i in seq_along(cells_all)){
   }
 }
 
-# saveRDS(var_p, "macrodemography/var_p.RDS")
-var_p <- readRDS("macrodemography/var_p.RDS")
+# saveRDS(var_p, "macrodemography/var_p_CARW.RDS")
+var_p <- readRDS("macrodemography/var_p_CARW.RDS")
 
 n_prod_sd_greater <- avg_sd_diff <- vector()
 for (i in seq_along(cells_all)) {

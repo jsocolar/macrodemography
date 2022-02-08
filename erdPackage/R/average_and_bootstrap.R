@@ -26,12 +26,6 @@ get_abun <- function(sp_data, n_rep, .cores = 4){
 }
 
 
-
-
-
-
-
-
 #' Get abundance for one timeslice
 #' @param sp_data Data for a particular species and year from get_grid_data()
 #' @param t index for the timeslice

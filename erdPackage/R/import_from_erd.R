@@ -48,7 +48,7 @@ import_checklists <- function(erd_path = "/Users/jacobsocolar/Dropbox/Work/macro
   checklists_query <- DBI::dbSendQuery(db, 
                                        "SELECT sampling_event_id, latitude, longitude, year, month, day_of_year,
                                         hours_of_day, protocol_id, is_stationary, is_traveling, 
-                                        effort_hrs, effort_distance_km, cci
+                                        effort_hrs, effort_distance_km, cci, ntl_mean, ELEV_30M_MEDIAN
                                      FROM checklists")
   checklists <- DBI::dbFetch(checklists_query)
   DBI::dbClearResult(checklists_query)

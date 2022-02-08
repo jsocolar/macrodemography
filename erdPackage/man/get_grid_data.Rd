@@ -9,6 +9,7 @@ get_grid_data(
   .year,
   tgrid_min,
   tgrid_max,
+  time_window = "weekly",
   min_lat,
   max_lat,
   min_lon,
@@ -25,6 +26,8 @@ get_grid_data(
 \item{tgrid_min}{the minimum week of year}
 
 \item{tgrid_max}{the maximum week of year}
+
+\item{time_window}{"weekly" or "full"}
 
 \item{min_lat}{the minimum latitude (decimal degrees) where the prediction is desired}
 

@@ -3,6 +3,7 @@
 #' @param .year the year
 #' @param tgrid_min the minimum week of year
 #' @param tgrid_max the maximum week of year
+#' @param time_window "weekly" or "full"
 #' @param min_lat the minimum latitude (decimal degrees) where the prediction is desired
 #' @param max_lat the maximum latitude
 #' @param min_lon the minimum longitude
@@ -10,7 +11,7 @@
 #' @param small_grid the dggridR resolution of the small grid
 #' @export
 get_grid_data <- function(data, .year,
-                     tgrid_min, tgrid_max,
+                     tgrid_min, tgrid_max, time_window = "weekly",
                      min_lat, max_lat, min_lon,
                      large_grid = 6, small_grid = 11,
                      .cores = 4) {
@@ -22,6 +23,10 @@ get_grid_data <- function(data, .year,
   zfd <- merge(zfd, get_tgrid(), by = "day_of_year", all = F)
   zfd <- zfd[tgrid >= tgrid_min & tgrid <= tgrid_max]
   
+  if (time_window == "full") {
+    zfd$tgrid <- 1
+  }
+  
   dg_large <- dggridR::dgconstruct(res=large_grid)
   dg_small <- dggridR::dgconstruct(res=small_grid)
   
@@ -32,18 +37,21 @@ get_grid_data <- function(data, .year,
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small)
   all_cells_small <- pixels$conus_small$cell[pixels$conus_small$cell_large %in% zfd$cells_large]
   
-  cl <- parallel::makeCluster(.cores, "FORK")
-  doParallel::registerDoParallel(cl)
-  tgrid <- tgrid_min:tgrid_max
-  
-  
-  
-  cell_data <- foreach (t = 1:length(tgrid)
-           ) %dopar% {
-             get_cell_data(zfd, tgrid[t], all_cells_small)
-           }
-  
-  parallel::stopCluster(cl = cl)
+  if (time_window == "weekly") {
+    cl <- parallel::makeCluster(.cores, "FORK")
+    doParallel::registerDoParallel(cl)
+    tgrid <- tgrid_min:tgrid_max
+    
+    cell_data <- foreach (t = 1:length(tgrid)
+    ) %dopar% {
+      get_cell_data(zfd, tgrid[t], all_cells_small)
+    }
+    
+    parallel::stopCluster(cl = cl)
+  } else if (time_window == "full") {
+    tgrid <- 1
+    cell_data <- list(get_cell_data(zfd, 1, all_cells_small))
+  }
   
   names(cell_data) <- paste0("tgrid_", tgrid)
   
@@ -107,14 +115,13 @@ stixel_mean_small <- function(x){
   } else if (x$n_x + x$n_value == 0) {
     return(0)
   } else if (x$n_value == 0) {
-    return(weighted.mean(x = c(0,2), w = c(x$n_z, x$n_x)))
+#    return(weighted.mean(x = c(0,2), w = c(x$n_z, x$n_x)))
+    return(NA)
   } else {
     n_z_rescaled <- x$n_z * x$n_value / (x$n_value + x$n_x)
     return(weighted.mean(x = c(0, x$mean_positive), w = c(n_z_rescaled, x$n_value)))
   }
 }
-
-
 
 
 #' Get data for a stixel

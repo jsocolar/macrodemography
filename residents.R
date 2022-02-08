@@ -401,6 +401,8 @@ dg <- dgconstruct(res = 6)
 # saveRDS(junjul_precip, "macrodemography/weather/junjul_precip.RDS")
 # saveRDS(decmar_swe, "macrodemography/weather/decmar_swe.RDS")
 
+
+##### Analyze and summarize weather relationships #####
 janfeb_temp <- readRDS("macrodemography/weather/janfeb_temp.RDS")
 julaug_temp <- readRDS("macrodemography/weather/julaug_temp.RDS")
 novfeb_precip <- readRDS("macrodemography/weather/novfeb_precip.RDS")
@@ -449,6 +451,7 @@ plotting_data2 <- data.frame(cell = cells_all,
                              full_janfeb_r_neg.3 = 0
                              )
 
+# Function to get p value from lm object
 lmp <- function (modelobject) {
   if (class(modelobject) != "lm") stop("Not an object of class 'lm' ")
   f <- summary(modelobject)$fstatistic
@@ -631,6 +634,8 @@ for (i in seq_along(cells_all)) {
 }
 
 # saveRDS(plotting_data2, "macrodemography/plotting_data2_carw.RDS")
+
+##### Plotting #####
 plotting_data2 <- readRDS("macrodemography/plotting_data2_carw.RDS")
 
 
@@ -689,7 +694,8 @@ for (i in 23:31) {
   
 
 
-#### CAR models
+##### CAR models #####
+# format data
 car_data <- plotting_data2[!is.na(plotting_data2$janfeb_mean_bayes), c("cell", "janfeb_mean_bayes", "janfeb_median_bayes",
                                "janfeb_var_bayes")]
 car_data$slope_scaled <- scale(car_data$janfeb_median_bayes)
@@ -697,6 +703,7 @@ car_data$lat <- dgSEQNUM_to_GEO(grid6, car_data$cell)$lat_deg
 car_data$lat_scaled <- scale(car_data$lat)
 car_data$cell_id <- paste0("cell_", car_data$cell)
 
+# get adjacency matrix
 adjacency_mat <- matrix(data = 0L, nrow = nrow(car_data), ncol = nrow(car_data))
 row.names(adjacency_mat) <- car_data$cell_id
 for (i in 1:(nrow(car_data) - 1)) {
@@ -712,7 +719,10 @@ for (i in 1:(nrow(car_data) - 1)) {
   }
 }
 
+# Use brms to generate stan code and data, and then hack around in the generated
+# code to add the uncertainty level
 library(brms)
+# Exact sparse CAR
 escar_code <- make_stancode(janfeb_median_bayes ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
                            data = car_data, data2 = list(M = adjacency_mat))
 escar2_code <- gsub("vector\\[N\\] Y;", "vector[N] Y;  // response variable\n   vector[N] Y_var;", escar_code)
@@ -725,10 +735,10 @@ standata_escar <- make_standata(slope_scaled ~ lat_scaled + car(M, gr = cell_id,
 standata_escar$Y_var <- (sqrt(car_data$janfeb_var_bayes)/sd(car_data$janfeb_median_bayes))^2
 escar2_mod <- cmdstanr::cmdstan_model("code/macrodemography/stan/escar2.stan")
 escar2_fit <- escar2_mod$sample(data = standata_escar, 
-                                adapt_delta = .8,
                                 iter_sampling = 10000,
                                 parallel_chains = 4)
 
+# Intrinsic CAR
 icar_code <- make_stancode(janfeb_median_bayes ~ lat_scaled + car(M, gr = cell_id, type = "icar"),
                            data = car_data, data2 = list(M = adjacency_mat))
 icar2_code <- gsub("vector\\[N\\] Y;", "vector[N] Y;  // response variable\n   vector[N] Y_var;", icar_code)
@@ -742,5 +752,6 @@ standata_icar$Y_var <- (sqrt(car_data$janfeb_var_bayes)/sd(car_data$janfeb_media
 icar2_mod <- cmdstanr::cmdstan_model("code/macrodemography/stan/icar2.stan")
 icar2_fit <- icar2_mod$sample(data = standata_icar, 
                               parallel_chains = 4)
+
 View(escar2_fit$summary())
 View(icar2_fit$summary())

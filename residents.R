@@ -95,8 +95,8 @@ species <- data.frame(four = c("bcch", "bhnu", "cach", "carw", "noca", "piwo", "
 
 
 ##### Get demographic indices #####
-spring_abun_data <- readRDS("macrodemography/residents/carw/spring_abun_data_fullwindow.RDS")
-fall_abun_data <- readRDS("macrodemography/residents/carw/fall_abun_data_fullwindow.RDS")
+spring_abun_data <- readRDS("macrodemography/residents/noca/spring_abun_data_fullwindow.RDS")
+fall_abun_data <- readRDS("macrodemography/residents/noca/fall_abun_data_fullwindow.RDS")
 
 # Function to extract cell-specific abundance data
 abun_data_bycell <- function(abun_data, n_small_min = 10) {
@@ -340,6 +340,7 @@ n_min <- 5
 
 grid_2 <- grid[!is.na(grid$n_prod), ]
 grid_2 <- grid_2[grid_2$n_prod >= n_min & grid_2$n_surv >= n_min, ]
+names(grid_2)[names(grid_2) == "p_surv_var_larger"] <- "p(survival)"
 # p <- ggplot() + 
 #   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
 #   geom_polygon(data=grid_2,      aes(x=long, y=lat, group=group, fill=n_prod_sd_greater), alpha=0.4)    +
@@ -349,9 +350,10 @@ grid_2 <- grid_2[grid_2$n_prod >= n_min & grid_2$n_surv >= n_min, ]
 
 p <- ggplot() + 
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-  geom_polygon(data=grid_2,      aes(x=long, y=lat, group=group, fill=p_surv_var_larger), alpha=0.7)    +
+  geom_polygon(data=grid_2,      aes(x=long, y=lat, group=group, fill=`p(survival)`), alpha=0.7)    +
   geom_path   (data=grid_2,      aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
-  viridis::scale_fill_viridis()
+  viridis::scale_fill_viridis(limits = c(0.05,0.95)) +
+  xlim(c(-107, -67))
 p
 
 
@@ -638,6 +640,8 @@ for (i in seq_along(cells_all)) {
 ##### Plotting #####
 plotting_data2 <- readRDS("macrodemography/plotting_data2_carw.RDS")
 
+names(plotting_data2)[names(plotting_data2) == "janfeb_mean_bayes"] <- "mean slope"
+names(plotting_data2)[names(plotting_data2) == "janfeb_p_bayes"] <- "p(positive slope)"
 
 grid <- dggridR::dgcellstogrid(grid6,plotting_data$cell,frame=TRUE,wrapcells=TRUE)
 grid_3  <- merge(grid,plotting_data2,by.x="cell")
@@ -661,19 +665,18 @@ for (i in 2:15) {
   plotting_fun(grid_3[!is.na(grid_3$janfeb_mean_slope), ], sym(names(plotting_data2)[i]), fill_lim = fill_lim)
 }
 
-
-grid_data <- grid_3[!is.na(grid_3$janfeb_mean_slope), ]
+grid_data <- grid_3[!is.na(grid_3$`mean slope`), ]
 fill_lim <- NULL
 p <- ggplot() + 
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-  geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = janfeb_mean_bayes), alpha = 2*abs(grid_data$janfeb_p_bayes - 0.5))   +
+  geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = `mean slope`), alpha = 2*abs(grid_data$`p(positive slope)` - 0.5))   +
   geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
   viridis::scale_fill_viridis(limits = fill_lim)
 p
 
 p <- ggplot() + 
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-  geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = janfeb_p_bayes), alpha = .8)   +
+  geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = `p(positive slope)`), alpha = .8)   +
   geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
   viridis::scale_fill_viridis(limits = fill_lim)
 p
@@ -696,12 +699,13 @@ for (i in 23:31) {
 
 ##### CAR models #####
 # format data
-car_data <- plotting_data2[!is.na(plotting_data2$janfeb_mean_bayes), c("cell", "janfeb_mean_bayes", "janfeb_median_bayes",
-                               "janfeb_var_bayes")]
-car_data$slope_scaled <- scale(car_data$janfeb_median_bayes)
+car_data <- plotting_data2[!is.na(plotting_data2$`mean slope`), c("cell", "mean slope", "janfeb_median_bayes",
+                               "janfeb_var_bayes", "janfeb_skew_bayes", "janfeb_kurt_bayes")]
+car_data$slope_scaled <- scale(car_data$`mean slope`)
 car_data$lat <- dgSEQNUM_to_GEO(grid6, car_data$cell)$lat_deg
 car_data$lat_scaled <- scale(car_data$lat)
 car_data$cell_id <- paste0("cell_", car_data$cell)
+car_data$known_se <- sqrt(car_data$janfeb_var_bayes)/sd(car_data$`mean slope`)
 
 # get adjacency matrix
 adjacency_mat <- matrix(data = 0L, nrow = nrow(car_data), ncol = nrow(car_data))
@@ -719,39 +723,87 @@ for (i in 1:(nrow(car_data) - 1)) {
   }
 }
 
-# Use brms to generate stan code and data, and then hack around in the generated
-# code to add the uncertainty level
+
 library(brms)
 # Exact sparse CAR
-escar_code <- make_stancode(janfeb_median_bayes ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
-                           data = car_data, data2 = list(M = adjacency_mat))
-escar2_code <- gsub("vector\\[N\\] Y;", "vector[N] Y;  // response variable\n   vector[N] Y_var;", escar_code)
-escar2_code <- gsub("\\nmodel \\{", "\n model {\n   vector[N] sigma_new = sqrt(sigma^2 + Y_var);", escar2_code)
-escar2_code <- gsub(" mu, sigma\\);", " mu, sigma_new);", escar2_code)
-cmdstanr::write_stan_file(escar2_code, dir = "code/macrodemography/stan",
-                          basename = "escar2")
-standata_escar <- make_standata(slope_scaled ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
-              data = car_data, data2 = list(M = adjacency_mat))
-standata_escar$Y_var <- (sqrt(car_data$janfeb_var_bayes)/sd(car_data$janfeb_median_bayes))^2
-escar2_mod <- cmdstanr::cmdstan_model("code/macrodemography/stan/escar2.stan")
-escar2_fit <- escar2_mod$sample(data = standata_escar, 
-                                iter_sampling = 10000,
-                                parallel_chains = 4)
+escar2_fit <- brm(slope_scaled | resp_se(known_se, sigma = TRUE) ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
+                    data = car_data, data2 = list(M = adjacency_mat), backend = 'cmdstanr', iter = 12000, warmup = 2000, cores = 4)
+# Intrinsic CAR (bym2)
+bym2_fit <- brm(slope_scaled | resp_se(known_se, sigma = TRUE) ~ lat_scaled + car(M, gr = cell_id, type = "bym2"),
+                 data = car_data, data2 = list(M = adjacency_mat), backend = 'cmdstanr', iter = 12000, warmup = 2000, cores = 4)
 
-# Intrinsic CAR
-icar_code <- make_stancode(janfeb_median_bayes ~ lat_scaled + car(M, gr = cell_id, type = "icar"),
-                           data = car_data, data2 = list(M = adjacency_mat))
-icar2_code <- gsub("vector\\[N\\] Y;", "vector[N] Y;  // response variable\n   vector[N] Y_var;", icar_code)
-icar2_code <- gsub("\\nmodel \\{", "\n model {\n   vector[N] sigma_new = sqrt(sigma^2 + Y_var);", icar2_code)
-icar2_code <- gsub(" mu, sigma\\);", " mu, sigma_new);", icar2_code)
-cmdstanr::write_stan_file(icar2_code, dir = "code/macrodemography/stan",
-                          basename = "icar2")
-standata_icar <- make_standata(slope_scaled ~ lat_scaled + car(M, gr = cell_id, type = "icar"),
-                                data = car_data, data2 = list(M = adjacency_mat))
-standata_icar$Y_var <- (sqrt(car_data$janfeb_var_bayes)/sd(car_data$janfeb_median_bayes))^2
-icar2_mod <- cmdstanr::cmdstan_model("code/macrodemography/stan/icar2.stan")
-icar2_fit <- icar2_mod$sample(data = standata_icar, 
-                              parallel_chains = 4)
 
-View(escar2_fit$summary())
-View(icar2_fit$summary())
+# # Legacy code to do resp_se by hand before I knew about resp_se in brms
+# escar_code <- make_stancode(janfeb_median_bayes ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
+#                            data = car_data, data2 = list(M = adjacency_mat))
+# escar2_code <- gsub("vector\\[N\\] Y;", "vector[N] Y;  // response variable\n   vector[N] Y_var;", escar_code)
+# escar2_code <- gsub("\\nmodel \\{", "\n model {\n   vector[N] sigma_new = sqrt(sigma^2 + Y_var);", escar2_code)
+# escar2_code <- gsub(" mu, sigma\\);", " mu, sigma_new);", escar2_code)
+# cmdstanr::write_stan_file(escar2_code, dir = "code/macrodemography/stan",
+#                           basename = "escar2")
+# standata_escar <- make_standata(slope_scaled ~ lat_scaled + car(M, gr = cell_id, type = "escar"),
+#               data = car_data, data2 = list(M = adjacency_mat))
+# standata_escar$Y_var <- car_data$known_se^2
+# escar2_mod <- cmdstanr::cmdstan_model("code/macrodemography/stan/escar2.stan")
+# escar2_fit <- escar2_mod$sample(data = standata_escar, 
+#                                 iter_sampling = 10000,
+#                                 parallel_chains = 4)
+
+summary(escar2_fit)
+summary(bym2_fit)
+
+#####
+pl <-  posterior_epred(escar2_fit, re.form = NA, incl_autocor = F)
+a <- apply(pl, 2, function(x){quantile(x, .05)})
+for(i in 1:9){
+  a <- cbind(a, apply(pl, 2, function(x){quantile(x, i/10 + .05)}))
+}
+q_frame <- as.data.frame(a)
+names(q_frame) <- paste0("q_", .05 + .1*c(0:9))
+q_frame$latitude <- car_data$lat
+q_frame$med <- apply(pl, 2, median)
+
+q_frame <- cbind(q_frame, car_data[c("slope_scaled", "known_se")])
+q_frame <- rename(q_frame, slope = slope_scaled)
+
+q_frame <- q_frame[order(q_frame$latitude),]
+q_frame$point_lower <- q_frame$slope - q_frame$known_se
+q_frame$point_upper <- q_frame$slope + q_frame$known_se
+certainty <- 1.2 - q_frame$known_se/max(q_frame$known_se)
+set.seed(1)
+q_frame$lat_jit <- q_frame$latitude + rnorm(nrow(q_frame), 0, .5)
+
+fill_color <- "salmon2"
+alpha <- .5
+point_color <- "gray25"
+
+q_frame[, ! (names(q_frame) %in% c("latitude", "lat_jit"))] <-
+  q_frame[, ! (names(q_frame) %in% c("latitude", "lat_jit"))] * sd(car_data$`mean slope`) +
+  mean(car_data$`mean slope`)
+
+
+ggplot(q_frame) + theme_classic() +
+  geom_ribbon(aes(x = latitude, ymin = q_0.05, ymax = q_0.95), fill = fill_color, alpha = alpha) +
+  geom_ribbon(aes(x = latitude, ymin = q_0.15, ymax = q_0.85), fill = fill_color, alpha = alpha) +
+  geom_ribbon(aes(x = latitude, ymin = q_0.25, ymax = q_0.75), fill = fill_color, alpha = alpha) +
+  geom_ribbon(aes(x = latitude, ymin = q_0.35, ymax = q_0.65), fill = fill_color, alpha = alpha) +
+  geom_ribbon(aes(x = latitude, ymin = q_0.45, ymax = q_0.55), fill = fill_color, alpha = alpha) +
+  geom_point(aes(x = lat_jit, y = slope, alpha = certainty), color = point_color) +
+  geom_segment(aes(x = lat_jit, y = point_lower, xend = lat_jit, yend = point_upper, alpha = certainty), color = point_color) +
+  geom_line(aes(x = latitude, y = med))
+
+
+
+ggplot(car_data, aes(janfeb_skew_bayes)) + geom_density() + 
+  xlim(c(-.5, .5)) + xlab("skewness") + ylab("") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+
+car_data$excess_kurtosis <- car_data$janfeb_kurt_bayes - 3
+ggplot(car_data, aes(excess_kurtosis)) + geom_density() + 
+  xlim(c(-2, 2)) + xlab("excess kurtosis") + ylab("")+
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+
+
+

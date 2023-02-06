@@ -6,13 +6,10 @@ if(socolar.desktop){
 }else if(socolar.laptop){
   dir.path <- "/Users/jacob/Dropbox/Work"
 }
-if(Sys.info()["nodename"]=="AG-CLO-AMD427B.local") dir.path="~/git/macrodemography"
-if(Sys.info()["nodename"]=="bigbird") dir.path="~/git/macrodemography"
-
 setwd(dir.path)
 
 # Change to appropriate remotes::install_github
-install.packages("~/git/macrodemography/erdPackage", 
+install.packages("Code/macrodemography/erdPackage", 
                  repos = NULL, 
                  type = "source")
 library(erdPackage)

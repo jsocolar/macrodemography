@@ -14,7 +14,7 @@
 #' @export
 get_grid_data <- function(data, .year,
                      tgrid_min, tgrid_max, time_window = "weekly",
-                     min_lat, max_lat, min_lon, max_lon,
+                     min_lat, max_lat, min_lon, max_lon = Inf,
                      large_grid = 6, small_grid = 11,
                      .cores = 4) {
   cell_data <- list()

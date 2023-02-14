@@ -7,19 +7,21 @@
 #' @param min_lat the minimum latitude (decimal degrees) where the prediction is desired
 #' @param max_lat the maximum latitude
 #' @param min_lon the minimum longitude
+#' @param max_lon the maximum longitude
 #' @param large_grid the dggridR resolution of the large grid
 #' @param small_grid the dggridR resolution of the small grid
+#' @param .cores number of parallel cores for `get_cell_data()` calls
 #' @export
 get_grid_data <- function(data, .year,
                      tgrid_min, tgrid_max, time_window = "weekly",
-                     min_lat, max_lat, min_lon,
+                     min_lat, max_lat, min_lon, max_lon,
                      large_grid = 6, small_grid = 11,
                      .cores = 4) {
   cell_data <- list()
   
   zfd <- data
   zfd <- zfd[year == .year]
-  zfd <- zfd[latitude > min_lat & latitude < max_lat & longitude > min_lon]
+  zfd <- zfd[latitude > min_lat & latitude < max_lat & longitude > min_lon & longitude < max_lon]
   zfd <- merge(zfd, get_tgrid(), by = "day_of_year", all = F)
   zfd <- zfd[tgrid >= tgrid_min & tgrid <= tgrid_max]
   
@@ -62,6 +64,7 @@ get_grid_data <- function(data, .year,
   attr(cell_data, "min_lat") <- min_lat
   attr(cell_data, "max_lat") <- max_lat
   attr(cell_data, "min_lon") <- min_lon
+  attr(cell_data, "max_lon") <- max_lon
   
   return(cell_data)
 }

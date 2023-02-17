@@ -1,5 +1,5 @@
 #' Get abundance data
-#' @param sp_data Data for a particular species and year from get_grid_data()
+#' @inheritParams get_abun_tgrid_slice
 #' @return a dataframe
 #' @export
 get_abun <- function(sp_data, n_rep, .cores = 4){

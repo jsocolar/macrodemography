@@ -1,28 +1,29 @@
 #' Get eBird summaries on cells of a small grid, tagged with membership in a large grid.
 #' @param data zero-filled data (output from import_from_erd())
 #' @param .year the year
-#' @param tgrid_min the minimum week of year
-#' @param tgrid_max the maximum week of year
-#' @param time_window "weekly" or "full"
+#' @param tgrid_min the minimum time grid index (week number if `time_grid=7`).
+#' @param tgrid_max the maximum time grid index (week number if `time_grid=7`).
+#' @param time_window "gridded" or "full"
 #' @param min_lat the minimum latitude (decimal degrees) where the prediction is desired
 #' @param max_lat the maximum latitude
 #' @param min_lon the minimum longitude
 #' @param max_lon the maximum longitude
 #' @param large_grid the dggridR resolution of the large grid
 #' @param small_grid the dggridR resolution of the small grid
+#' @param time_grid the temporal grid size in days (default 7, one week).
 #' @param .cores number of parallel cores for `get_cell_data()` calls
 #' @export
 get_grid_data <- function(data, .year,
-                     tgrid_min, tgrid_max, time_window = "weekly",
+                     tgrid_min, tgrid_max, time_window = "gridded",
                      min_lat, max_lat, min_lon, max_lon = Inf,
-                     large_grid = 6, small_grid = 11,
+                     large_grid = 6, small_grid = 11, time_grid = 7,
                      .cores = 4) {
   cell_data <- list()
   
   zfd <- data
   zfd <- zfd[year == .year]
   zfd <- zfd[latitude > min_lat & latitude < max_lat & longitude > min_lon & longitude < max_lon]
-  zfd <- merge(zfd, get_tgrid(), by = "day_of_year", all = F)
+  zfd <- merge(zfd, get_tgrid(time_grid), by = "day_of_year", all = F)
   zfd <- zfd[tgrid >= tgrid_min & tgrid <= tgrid_max]
   
   if (time_window == "full") {
@@ -32,14 +33,13 @@ get_grid_data <- function(data, .year,
   dg_large <- dggridR::dgconstruct(res=large_grid)
   dg_small <- dggridR::dgconstruct(res=small_grid)
   
-  
   zfd$cells_large <- dggridR::dgGEO_to_SEQNUM(dg_large, zfd$longitude, zfd$latitude)$seqnum
   zfd$cells_small <- dggridR::dgGEO_to_SEQNUM(dg_small, zfd$longitude, zfd$latitude)$seqnum
-  
+
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small)
   all_cells_small <- pixels$conus_small$cell[pixels$conus_small$cell_large %in% zfd$cells_large]
   
-  if (time_window == "weekly") {
+  if (time_window == "gridded") {
     cl <- parallel::makeCluster(.cores, "FORK")
     doParallel::registerDoParallel(cl)
     tgrid <- tgrid_min:tgrid_max
@@ -74,10 +74,11 @@ get_grid_data <- function(data, .year,
 
 
 #' get a 7-day grid over ordinal days
+#' @param days time grid resolution in days
 #' @return a two-column data-frame that tags each day-of-year to a tgrid cell
-get_tgrid <- function() {
+get_tgrid <- function(days=7) {
   out <- data.frame(day_of_year = 1:366)
-  out$tgrid <- floor((out$day_of_year - 1)/7) + 1
+  out$tgrid <- floor((out$day_of_year - 1)/days) + 1
   return(out)
 }
 
@@ -86,9 +87,9 @@ get_tgrid <- function() {
 #' @param dg_large large dggridR grid
 #' @param dg_small small dggridR grid
 get_pixels <- function(dg_large, dg_small) {
-
-  
   conus <- spData::us_states
+  # QUESTION: this rater definition is US-specific, how to generalize?
+  # QUESTION: differs from extent defined earlier: extent=c(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50), is this necessary?
   conus_raster <- fasterize::fasterize(conus,
                                        raster::raster(ncol=1000, nrow = 1000, 
                                                       xmn = -125, xmx = -66, 

@@ -12,7 +12,7 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
   for(i in seq_along(cells)) {
     ad3 <- ad2[ad2$cell == cells[i], ]
     if (nrow(ad3) == 1) {
-      out[i, 2:102] <- colMeans(ad3[6:106])
+      out[i, 2:102] <- colMeans(ad3[6:106]) # QUESTION: what are these indices? Need to make this generic
     }
   }
   return(out)
@@ -20,9 +20,9 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
 
 #' Abundance summary across years
 #' @inheritParams abun_data_bycell
-#' @return something
 #' @export
 get_abun_summary <- function(abun_data, n_small_min) {
+  years <- as.numeric(names(abun_data))
   y <- seq_along(years)
   lapply(abun_data, abun_data_bycell, n_small_min = n_small_min)
 }
@@ -44,6 +44,7 @@ get_cell_timeseries <- function (cells_all,
       print(i)
       cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], 2:102]
       cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], 2:102])
+      years <- as.numeric(names(spring_abun_summary))
       for(j in 2:length(years)) {
         cell_data <- rbind(cell_data, spring_abun_summary[[j]][spring_abun_summary[[j]]$cell == cells_all[i], 2:102])
         cell_data <- rbind(cell_data, fall_abun_summary[[j]][fall_abun_summary[[j]]$cell == cells_all[i], 2:102])

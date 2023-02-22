@@ -155,7 +155,6 @@ cells_all <- unique(checklists$seqnum)
 sample_grid_abun <- function(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=6, large_grid=11, time_grid=7, .cores=4){
   # verify input arguments
   assert_that(is.character(species_code))
-  assert_that(is.character(path_out))
   assert_that(file.exists(path_erd))
   assert_that(is.data.frame(checklists))
   assert_that(is.data.frame(effort_thresholds))

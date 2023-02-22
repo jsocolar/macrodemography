@@ -44,7 +44,7 @@ get_cell_timeseries <- function (cells_all,
   cell_timeseries <- list()
   for (i in seq_along(cells_all)) {
     if (cells_all[i] %in% cells) {
-      print(paste("calculating cell",i,"...")
+      print(paste("calculating cell",i,"..."))
       cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], 2:102]
       cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], 2:102])
       years <- as.numeric(names(spring_abun_summary))

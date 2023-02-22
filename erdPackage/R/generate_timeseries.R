@@ -65,6 +65,7 @@ get_cell_timeseries <- function (cells_all,
     }
     
   }
+  names(cell_timeseries) = cells_all
   return(cell_timeseries)
 }
 

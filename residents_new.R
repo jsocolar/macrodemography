@@ -2,6 +2,9 @@
 # load libraries
 #################################
 
+# authorization token for private repo
+auth_token=readLines("token")
+
 # Install erdPackage
 if(!"erdPackage" %in% rownames(installed.packages()))
   devtools::install_github("adokter/macrodemography", subdir="erdPackage", auth_token=auth_token)
@@ -36,16 +39,17 @@ path_erd = "~/Dropbox/macrodemography/erd/erd.db"
 # path to checkist file (see flag import_checklists_from_db)
 path_checklists = "~/Dropbox/macrodemography/erd/imported_checklists.RDS"
 path_data = "~/Dropbox/macrodemography_refactor/data/residents"
-
-# authorization token for private repo
-auth_token=readLines("token")
+path_checklists_filtered = "~/Dropbox/macrodemography_refactor/data/filtered_checklists.RDS"
 
 #################################
 # flags
 #################################
 
-# re-create checklist file set by path_checklists
+# re-create checklist file set by path_checklists by loading from erd.db
 import_checklists_from_db = FALSE
+# re-create filtered checklist file by applying spatial/temporal extents
+filter_checklists = FALSE
+
 # re-sample species from erd on small/large grids
 resample_data = FALSE
 
@@ -66,11 +70,16 @@ effort_thresholds <- data.frame(dist_max=3, time_min=5/60, time_max=1, cci_min=0
 # set hexagon grid area:
 hexagon_area_large <- 70000
 hexagon_area_small <- 300
+# define hexagon grid
+# for an area of ~ 70000 km^2, we get a resolution of 6:
+grid_large <- dggridR::dgconstruct(area = hexagon_area_large)
+# for an area of ~ 300 km^2, we get a resolution of 11:
+grid_small <- dggridR::dgconstruct(area = hexagon_area_small)
+
 # time grid in days
 time_grid <- 7
 # minimum number of small cells to compute abundance index for large cell
 n_small_min = 10
-
 
 # species (4 and 6 letter abbreviations)
 # QUESTION: why two definitions? suggest moving to eBird species codes, see e.g. ebirdst::ebirdst_runs
@@ -93,8 +102,36 @@ if(import_checklists_from_db){
   checklists <- import_checklists(path_erd)
   saveRDS(checklists, path_checklists)
 } else{
-  checklists <- readRDS(path_checklists)
+  if(filter_checklists) checklists <- readRDS(path_checklists)
 }
+
+#################################
+# filter checklists for extent, altitude and year
+#################################
+if(filter_checklists){
+  # filter checklists for extent, year and elevation
+  checklists %>%
+    filter(latitude > extent_space$min_lat &
+             latitude < extent_space$max_lat &
+             longitude > extent_space$min_lon &
+             longitude < extent_space$max_lon &
+             year >= min(years) &
+             year <= max(years) &
+             ELEV_30M_MEDIAN < max_altitude &
+             ((ELEV_30M_MEDIAN < max_altitude_above_lat42) | (latitude < 42))  # QUESTION: why this selection?
+    ) -> checklists
+  
+  # add hexagon indices to checklists (takes ~2-3 minutes ...)
+  mutate(checklists, seqnum=dggridR::dgGEO_to_SEQNUM(grid_large, longitude, latitude)[[1]]) -> checklists
+  saveRDS(checklists, path_checklists_filtered)
+  } else{
+  if(import_checklists_from_db) warning("import_checklists_from_db equals TRUE, consider refiltering checklists as well by setting filter_checklists=TRUE")
+  checklists <- readRDS(path_checklists_filtered)
+}
+
+# extract unique hexagons
+cells_all <- unique(checklists$seqnum)
+
 
 #################################
 # color scales, themes, map data
@@ -115,41 +152,12 @@ blank_theme <-
         axis.ticks.y=element_blank(),
         axis.title.x = element_blank(),
         axis.title.y = element_blank()
-        )
+  )
 
 western_states <- c("arizona", "california", "colorado", "idaho", "montana",
                     "nevada", "new mexico", "oregon", "utah", "washington",
                     "wyoming")
 states <- map_data("state") %>% filter(region %in% western_states)
-
-#################################
-# filter checklists for extent, altitude and year
-#################################
-
-# filter checklists for extent, year and elevation
-checklists %>%
-  filter(latitude > extent_space$min_lat &
-         latitude < extent_space$max_lat &
-         longitude > extent_space$min_lon &
-         longitude < extent_space$max_lon &
-         year >= min(years) &
-         year <= max(years) &
-         ELEV_30M_MEDIAN < max_altitude &
-         ((ELEV_30M_MEDIAN < max_altitude_above_lat42) | (latitude < 42))  # QUESTION: why this selection?
-  ) -> checklists
-
-#################################
-# define grid
-#################################
-# define hexagon grid
-# for an area of ~ 70000 km^2, we get a resolution of 6:
-grid_large <- dggridR::dgconstruct(area = hexagon_area_large)
-# for an area of ~ 300 km^2, we get a resolution of 11:
-grid_small <- dggridR::dgconstruct(area = hexagon_area_small)
-# add hexagon indices to checklists (takes ~2-3 minutes ...)
-mutate(checklists, seqnum=dggridR::dgGEO_to_SEQNUM(grid_large, longitude, latitude)[[1]]) -> checklists
-# extract unique hexagons
-cells_all <- unique(checklists$seqnum)
 
 
 #################################
@@ -217,6 +225,54 @@ sample_grid_abun <- function(species_code, path_erd, checklists, effort_threshol
   output <- list(grid=data_grid, abun=data_abun)
 }
 
+get_ratios <- function(data, cells_all, period=c("spring", "fall")){
+  # verify we have all periods (spring and fall) available
+  assert_that(all(period %in% names(data)))
+  assert_that(length(period)==2)
+  assert_that(is.character(period))
+  # verify that loaded data contains no unknown grid cells
+  # QUESTION: in what situation could this evaluate to FALSE?
+  cells_present <- sapply(period, function(x) assert_that(all(data[[x]][[1]]$cell %in% cells_all)))
+  assert_that(all(cells_present), msg="loaded data contains unknown grid cells")
+  
+  message(paste("calculating ratios with period1 =",period[1],"and period2 =",period[2]))
+  
+  # Extract cell-specific abundance data
+  spring_abun_summary <- get_abun_summary(data[[period[1]]], n_small_min)
+  fall_abun_summary <- get_abun_summary(data[[period[2]]], n_small_min)
+  cell_timeseries <- get_cell_timeseries(cells_all,
+                                         spring_abun_summary,
+                                         fall_abun_summary)
+  
+  # Take the log-ratios along the timeseries to get a ratio series
+  # cell_ratio_series is a summary of the bootstrap uncertainty, and
+  # cell_ratio_series_full gives all bootstrap replicates.
+  cells <- unique(spring_abun_summary[[1]]$cell)
+  cell_ratio_series <- cell_ratio_series_full <- list()
+  for (i in 1:length(cell_timeseries)) {
+    if (cells_all[i] %in% cells) {
+      lrats <- apply(cell_timeseries[[i]][ ,2:ncol(cell_timeseries[[i]])], 2, function(x){log(stocks::ratios(x))})
+      cell_ratio_series[[i]] <- list()
+      cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
+      cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
+      
+      cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
+      cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
+      
+      cell_ratio_series_full[[i]] <- lrats
+    } else {
+      cell_ratio_series[[i]] <- cell_ratio_series_full[[i]] <- NA
+    }
+  }
+  
+  # make output a named list:
+  names(cell_ratio_series) <- names(cell_timeseries)
+  names(cell_ratio_series_full) <- names(cell_timeseries)
+  
+  return(list(summary=cell_ratio_series, replicates=cell_ratio_series_full))
+}
+
+
 #################################
 # sample small/large grids for each species
 #################################
@@ -239,9 +295,7 @@ if(resample_data){
 #################################
 
 ##### Declare species #####
-species <- "CARW"
-species <- "carw"
-species <- "carwre"
+species <- "carwre"  # use consistent 6-letter convention throughout
 
 ##### load abundance data #####
 file_species <- list.files(paste0(path_data), pattern=".rds$", full.names=T) %>% as_tibble %>% filter(grepl(species,value)) %>% pull(value)
@@ -249,41 +303,12 @@ print(paste("loading data from file", file_species,"..."))
 data <- readRDS(file_species)
 
 ##### Get demographic indices #####
+cell_ratios <- get_ratios(data$abun, cells_all)
 
-# verify that loaded data contains no unknown grid cells
-# QUESTION: in what situation could this evaluate to FALSE?
-sapply(extent_time$period, function(x) assert_that(all(data$abun[[x]][[1]]$cell %in% cells_all)))
+######################
+# REVIEWED UNTIL HERE
+######################
 
-# verify we have spring and fall data available
-assert_that(all(c("spring","fall") %in% names(data$abun)))
-
-# Extract cell-specific abundance data
-spring_abun_summary <- get_abun_summary(data$abun$spring, n_small_min)
-fall_abun_summary <- get_abun_summary(data$abun$fall, n_small_min)
-cell_timeseries <- get_cell_timeseries(cells_all,
-                                       spring_abun_summary,
-                                       fall_abun_summary)
-
-# Take the log-ratios along the timeseries to get a ratio series
-# cell_ratio_series is a summary of the bootstrap uncertainty, and
-# cell_ratio_series_full gives all bootstrap replicates.
-cells <- unique(spring_abun_summary[[1]]$cell)
-cell_ratio_series <- cell_ratio_series_full <- list()
-for (i in 1:length(cell_timeseries)) {
-  if (cells_all[i] %in% cells) {
-    lrats <- apply(cell_timeseries[[i]][ ,2:101], 2, function(x){log(stocks::ratios(x))})
-    cell_ratio_series[[i]] <- list()
-    cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
-    cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
-
-    cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
-    cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
-
-    cell_ratio_series_full[[i]] <- lrats
-  } else {
-    cell_ratio_series[[i]] <- cell_ratio_series_full[[i]] <- NA
-  }
-}
 
 # Plot the cell ratio series
 dev.off()

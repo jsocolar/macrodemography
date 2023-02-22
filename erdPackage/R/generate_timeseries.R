@@ -3,6 +3,9 @@
 #' @param n_small_min minimum number of small cells to compute abundance index for large cell
 #' @return data.frame of abundances
 #' @export
+#' @details 
+#' The output data.frame has columns `cell` for the cell index, `average` for the average abundance, and columns `rep_i`
+#' containing the replicates of sampled abundance on which `average` is based.
 abun_data_bycell <- function(abun_data, n_small_min = 10) {
   cells <- unique(abun_data$cell)
   ad2 <- abun_data[abun_data$n_small >= n_small_min, ]
@@ -20,10 +23,10 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
 
 #' Abundance summary across years
 #' @inheritParams abun_data_bycell
+#' @return a list of data.frames for each year calculated by \link[abun_data_bycell].
 #' @export
+#' Each list element for this function contains a data.frame for a year, provided by [abun_data]
 get_abun_summary <- function(abun_data, n_small_min) {
-  years <- as.numeric(names(abun_data))
-  y <- seq_along(years)
   lapply(abun_data, abun_data_bycell, n_small_min = n_small_min)
 }
 
@@ -32,7 +35,7 @@ get_abun_summary <- function(abun_data, n_small_min) {
 #' Merge spring and fall indices into a timeseries
 #' @param cells_all numeric vector of cell ids
 #' @param spring_abun_summary spring abundance summary
-#' @param fall_abun_summary fall_abundance_summary
+#' @param fall_abun_summary fall abundance summary
 #' @return dataframe
 #' @export
 get_cell_timeseries <- function (cells_all, 
@@ -41,7 +44,7 @@ get_cell_timeseries <- function (cells_all,
   cell_timeseries <- list()
   for (i in seq_along(cells_all)) {
     if (cells_all[i] %in% cells) {
-      print(i)
+      print(paste("calculating cell",i,"...")
       cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], 2:102]
       cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], 2:102])
       years <- as.numeric(names(spring_abun_summary))

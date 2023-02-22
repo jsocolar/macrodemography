@@ -57,6 +57,7 @@ resample_data = FALSE
 years <- c(2006:2019)
 # geographic extent
 extent_space=data.frame(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50)
+# temporal extent should contain a row for spring and fall:
 extent_time = data.frame(period=c("spring","fall"), tgrid_min=c(13,40), tgrid_max=c(16,43), year_min=2018, year_max=2019)
 max_altitude = 2000
 max_altitude_above_lat42 = 1500  #QUESTION: what is this for?
@@ -67,6 +68,9 @@ hexagon_area_large <- 70000
 hexagon_area_small <- 300
 # time grid in days
 time_grid <- 7
+# minimum number of small cells to compute abundance index for large cell
+n_small_min = 10
+
 
 # species (4 and 6 letter abbreviations)
 # QUESTION: why two definitions? suggest moving to eBird species codes, see e.g. ebirdst::ebirdst_runs
@@ -159,17 +163,17 @@ sample_grid_abun <- function(species_code, path_erd, checklists, effort_threshol
   assert_that(file.exists(path_erd))
   assert_that(is.data.frame(checklists))
   assert_that(is.data.frame(effort_thresholds))
-  assert_that(!(FALSE %in% (c("dist_max","time_min","time_max","cci_min") %in% colnames(effort_thresholds))), msg="missing threshold value(s) for dist_max, time_min, time_max, cci_min")
+  assert_that(all(c("dist_max","time_min","time_max","cci_min") %in% colnames(effort_thresholds)), msg="missing threshold value(s) for dist_max, time_min, time_max, cci_min")
   assert_that(effort_thresholds$time_min < effort_thresholds$time_max)
   assert_that(effort_thresholds$dist_max > 0)
   assert_that(is.data.frame(extent_space))
-  assert_that(!(FALSE %in% (c("min_lon","max_lon","min_lat","max_lat") %in% colnames(extent_space))), msg="missing threshold value(s) for min_lon, max_lon, min_lat, max_lat")
+  assert_that(all(c("min_lon","max_lon","min_lat","max_lat") %in% colnames(extent_space)), msg="missing threshold value(s) for min_lon, max_lon, min_lat, max_lat")
   assert_that(extent_space$min_lon < extent_space$max_lon)
   assert_that(extent_space$min_lat < extent_space$max_lat)
   assert_that(is.data.frame(extent_time))
-  assert_that(!(FALSE %in% (extent_time$year_min <= extent_time$year_max)))
-  assert_that(!(FALSE %in% (extent_time$tgrid_min < extent_time$tgrid_max)))
-  assert_that(!(FALSE %in% (c("period","tgrid_min","tgrid_max","year_min", "year_max") %in% colnames(extent_time))), msg="missing threshold value(s) for period, tgrid_min, tgrid_max, year_min, year_max")
+  assert_that(all(extent_time$year_min <= extent_time$year_max))
+  assert_that(all(extent_time$tgrid_min < extent_time$tgrid_max))
+  assert_that(all(c("period","tgrid_min","tgrid_max","year_min", "year_max") %in% colnames(extent_time)), msg="missing threshold value(s) for period, tgrid_min, tgrid_max, year_min, year_max")
   assert_that(time_window %in% c("gridded", "full"))
 
   # load species data from ERD
@@ -231,26 +235,31 @@ if(resample_data){
 }
 
 #################################
-# sample grid for each species
+# Calculate spring/fall log-ratios 
 #################################
 
 ##### Declare species #####
 species <- "CARW"
+species <- "carw"
+species <- "carwre"
+
+##### load abundance data #####
+file_species <- list.files(paste0(path_data), pattern=".rds$", full.names=T) %>% as_tibble %>% filter(grepl(species,value)) %>% pull(value)
+print(paste("loading data from file", file_species,"..."))
+data <- readRDS(file_species)
 
 ##### Get demographic indices #####
-spring_abun_data <- readRDS(
-  paste0(path_data, "/", species, "/spring_abun_data_fullwindow.RDS")
-)
-fall_abun_data <- readRDS(
-  paste0(path_data, "/", species, "/fall_abun_data_fullwindow.RDS")
-)
 
-assertthat::assert_that(all(spring_abun_data[[1]]$cell %in% cells_all))
-assertthat::assert_that(all(fall_abun_data[[1]]$cell %in% cells_all))
+# verify that loaded data contains no unknown grid cells
+# QUESTION: in what situation could this evaluate to FALSE?
+sapply(extent_time$period, function(x) assert_that(all(data$abun[[x]][[1]]$cell %in% cells_all)))
+
+# verify we have spring and fall data available
+assert_that(all(c("spring","fall") %in% names(data$abun)))
 
 # Extract cell-specific abundance data
-spring_abun_summary <- get_abun_summary(spring_abun_data, 10)
-fall_abun_summary <- get_abun_summary(fall_abun_data, 10)
+spring_abun_summary <- get_abun_summary(data$abun$spring, n_small_min)
+fall_abun_summary <- get_abun_summary(data$abun$fall, n_small_min)
 cell_timeseries <- get_cell_timeseries(cells_all,
                                        spring_abun_summary,
                                        fall_abun_summary)

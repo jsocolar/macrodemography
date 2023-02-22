@@ -8,14 +8,16 @@
 #' containing the replicates of sampled abundance on which `average` is based.
 abun_data_bycell <- function(abun_data, n_small_min = 10) {
   cells <- unique(abun_data$cell)
+  # number of columns in abun_data:
+  ncol <- ncol(abun_data)
   ad2 <- abun_data[abun_data$n_small >= n_small_min, ]
-  abun_cols <- as.data.frame(matrix(nrow = length(cells), ncol = ncol(abun_data) - 5))
-  names(abun_cols) <- c("average", paste0("rep_", c(1:(ncol(abun_data) - 6))))
+  abun_cols <- as.data.frame(matrix(nrow = length(cells), ncol = ncol - 5))
+  names(abun_cols) <- c("average", paste0("rep_", c(1:(ncol - 6))))
   out <- cbind(data.frame(cell = cells), abun_cols)
   for(i in seq_along(cells)) {
     ad3 <- ad2[ad2$cell == cells[i], ]
     if (nrow(ad3) == 1) {
-      out[i, 2:102] <- colMeans(ad3[6:106]) # QUESTION: what are these indices? Need to make this generic
+      out[i, 2:(ncol-4)] <- colMeans(ad3[6:ncol])
     }
   }
   return(out)
@@ -30,27 +32,32 @@ get_abun_summary <- function(abun_data, n_small_min) {
   lapply(abun_data, abun_data_bycell, n_small_min = n_small_min)
 }
 
-
-
 #' Merge spring and fall indices into a timeseries
 #' @param cells_all numeric vector of cell ids
 #' @param spring_abun_summary spring abundance summary
 #' @param fall_abun_summary fall abundance summary
-#' @return dataframe
+#' @return a list of data.frames, with list elements corresponding to cells
 #' @export
+#' @details This functions pastes the spring and full abundance summaries together
+#' in one data.frame for each cell, with the spring on the uneven column indices and fall on the
+#' even column indices, with in total 2x (number of years) columns
 get_cell_timeseries <- function (cells_all, 
                                  spring_abun_summary, fall_abun_summary) {
   cells <- unique(spring_abun_summary[[1]]$cell)
   cell_timeseries <- list()
+  # column indices containin sampled abundance data (rep_i) and their average (average)
+  # dropping first column containing cell name
+  col_abun = 2:dim(spring_abun_summary[[1]])[2]
   for (i in seq_along(cells_all)) {
     if (cells_all[i] %in% cells) {
       print(paste("calculating cell",i,"..."))
-      cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], 2:102]
-      cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], 2:102])
+      
+      cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], col_abun]
+      cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], col_abun])
       years <- as.numeric(names(spring_abun_summary))
       for(j in 2:length(years)) {
-        cell_data <- rbind(cell_data, spring_abun_summary[[j]][spring_abun_summary[[j]]$cell == cells_all[i], 2:102])
-        cell_data <- rbind(cell_data, fall_abun_summary[[j]][fall_abun_summary[[j]]$cell == cells_all[i], 2:102])
+        cell_data <- rbind(cell_data, spring_abun_summary[[j]][spring_abun_summary[[j]]$cell == cells_all[i], col_abun])
+        cell_data <- rbind(cell_data, fall_abun_summary[[j]][fall_abun_summary[[j]]$cell == cells_all[i], col_abun])
       }
       cell_timeseries[[i]] <- cell_data
     } else {

@@ -17,6 +17,7 @@ library(sf)
 library(dtplyr) # enable dplyr for data.table
 library(assertthat)
 library(ebirdst)
+library(fasterize)
 
 #################################
 # paths
@@ -152,7 +153,7 @@ cells_all <- unique(checklists$seqnum)
 #################################
 
 # sample a species given thresholds on effort, space and time
-sample_grid_abun <- function(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=6, large_grid=11, time_grid=7, .cores=4){
+sample_grid_abun <- function(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=11, large_grid=6, time_grid=7, .cores=4){
   # verify input arguments
   assert_that(is.character(species_code))
   assert_that(file.exists(path_erd))
@@ -192,7 +193,7 @@ sample_grid_abun <- function(species_code, path_erd, checklists, effort_threshol
     data_grid[[i]] <- data_abun[[i]] <- list()
     for (y in seq_along(years)) {
 
-      print(paste("grid sampling",species_code,"data for",extent_time$period,years[y],"..."))
+      print(paste("grid sampling",species_code,"data for",extent_time$period[i],years[y],"..."))
 
       data_grid[[i]][[y]] <- get_grid_data(data = sp_data_select,
                                            .year = years[y],

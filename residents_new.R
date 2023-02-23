@@ -280,7 +280,7 @@ get_ratios <- function(data, cells_all, period=c("spring", "fall")){
 if(resample_data){
   for(species_code in species_to_process){
     # sample the data
-    data <- sample_grid_abun(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=11, large_grid=6, time_grid=7)
+    data <- sample_grid_abun(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=grid_small$res, large_grid=grid_large$res, time_grid=7)
     # create output filename
     file_out <- paste0(path_data, "/data_", species_code , ".rds")
     # create output directory if not present

@@ -40,6 +40,7 @@ path_erd = "~/Dropbox/macrodemography/erd/erd.db"
 path_checklists = "~/Dropbox/macrodemography/erd/imported_checklists.RDS"
 path_data = "~/Dropbox/macrodemography_refactor/data/residents"
 path_checklists_filtered = "~/Dropbox/macrodemography_refactor/data/filtered_checklists.RDS"
+path_brms_results = "~/Dropbox/macrodemography"
 
 #################################
 # flags
@@ -123,6 +124,8 @@ if(filter_checklists){
   
   # add hexagon indices to checklists (takes ~2-3 minutes ...)
   mutate(checklists, seqnum=dggridR::dgGEO_to_SEQNUM(grid_large, longitude, latitude)[[1]]) -> checklists
+  # writing results to file, since above statement takes annoyingly long
+  # TODO: may want to add this to all checklists once, as part of previous load_checklists section
   saveRDS(checklists, path_checklists_filtered)
   } else{
   if(import_checklists_from_db) warning("import_checklists_from_db equals TRUE, consider refiltering checklists as well by setting filter_checklists=TRUE")
@@ -263,6 +266,7 @@ get_ratios <- function(data, cells_all, period=c("spring", "fall")){
       
       cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
       cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
+      cell_ratio_series[[i]]$sd <- apply(lrats, 1, sd)
       cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
       cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
       
@@ -313,12 +317,6 @@ data <- readRDS(file_species)
 cell_ratios <- get_ratios(data$abun, cells_all)
 tidy_ratios <- do.call(rbind,lapply(cell_ratios$summary[!is.na(cell_ratios$summary)], as_tibble))
 
-tidy_ratios
-
-######################
-# REVIEWED UNTIL HERE
-######################
-
 # Plot the cell ratio series
 dev.off()
 cells <- unique(data$abun$spring[[1]]$cell)
@@ -333,9 +331,24 @@ for (i in 1:length(cell_ratios$summary)) {
   }
 }
 
-
 ##### Analyze the timeseries #####
-# Get the standard deviations of the survival and productivity values
+
+# QUESTION: a lot of code below to calculate the standard deviations of the 
+# survival and productivity values. What do we gain relative to a more simple
+# frequentist calculation sd for prod and surv, like:
+tidy_ratios %>%
+  group_by(year,period) %>%
+  filter(is.finite(avg)) %>%
+  summarise(across(everything(), \(x) mean(x, na.rm=TRUE))) %>%
+  mutate(season=ifelse(period=="fall", "prod","surv"))
+
+# QUESTION: code below is getting increasingly hard to read, please add
+# more detailed comments to make it understandable for someone new,
+
+cell_ratio_series=cell_ratios$summary
+cell_ratio_series_full=cell_ratios$replicates
+
+
 sd_holder_prod <- sd_holder_surv <- matrix(nrow = length(cells_all), ncol = 100)
 colnames(sd_holder_prod) <- paste0("prod_sd_rep_", 1:100)
 colnames(sd_holder_surv) <- paste0("surv_sd_rep_", 1:100)
@@ -343,7 +356,6 @@ colnames(sd_holder_surv) <- paste0("surv_sd_rep_", 1:100)
 cell_lrat_sd <- cbind(data.frame(cell = cells_all, n_prod = NA, n_surv = NA),
                       as.data.frame(sd_holder_prod), as.data.frame(sd_holder_surv))
 var_p <- var_d <- rep(NA, length(cells_all))
-
 
 lrat_skews <- lrat_kurts <- vector()
 diagnostic_failure <- 0
@@ -377,6 +389,7 @@ for(i in seq_along(cells_all)){
 
       model_df <- rbind(prod_df, surv_df)
 
+      #QUESTION: please add some rationale in comments for this main formula
       mod_formula <- bf(ratio | resp_se(sd, sigma = TRUE) ~ season,
                         sigma ~ season)
 
@@ -415,6 +428,12 @@ for(i in seq_along(cells_all)){
   }
 }
 
+######################
+# REVIEWED UNTIL HERE
+######################
+
+
+
 assertthat::assert_that(!diagnostic_failure)
 
 skews_kurts <- data.frame(
@@ -437,8 +456,13 @@ ggplot(skews_kurts, aes(excess.kurtosis)) +
 
 saveRDS(var_d, paste0("macrodemography/var_d_", species, ".RDS"))
 saveRDS(var_p, paste0("macrodemography/var_p_", species, ".RDS"))
-var_p <- readRDS(paste0("macrodemography/var_p_", species, ".RDS"))
-var_d <- readRDS(paste0("macrodemography/var_d_", species, ".RDS"))
+# QUESTION: what are var_p and var_d?
+var_p <- readRDS(paste0(path_brms_results,"/var_p_", species, ".RDS"))
+var_d <- readRDS(paste0(path_brms_results,"/var_d_", species, ".RDS"))
+
+data.frame(cell=cells_all, var_p, var_d)
+
+
 
 plotting_data <- data.frame(cell = cells_all,
                             n_prod = cell_lrat_sd$n_prod,

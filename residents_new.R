@@ -243,19 +243,26 @@ get_ratios <- function(data, cells_all, period=c("spring", "fall")){
   cell_timeseries <- get_cell_timeseries(cells_all,
                                          spring_abun_summary,
                                          fall_abun_summary)
-  
-  # Take the log-ratios along the timeseries to get a ratio series
+    # Take the log-ratios along the timeseries to get a ratio series
   # cell_ratio_series is a summary of the bootstrap uncertainty, and
   # cell_ratio_series_full gives all bootstrap replicates.
   cells <- unique(spring_abun_summary[[1]]$cell)
   cell_ratio_series <- cell_ratio_series_full <- list()
+  ratio_series_length <- 2*length(spring_abun_summary)-1
+  
   for (i in 1:length(cell_timeseries)) {
     if (cells_all[i] %in% cells) {
+      # calculate logarithmic ratios (lrats)
       lrats <- apply(cell_timeseries[[i]][ ,2:ncol(cell_timeseries[[i]])], 2, function(x){log(stocks::ratios(x))})
       cell_ratio_series[[i]] <- list()
+      
+      # cell / year / reference period (named after the latest period on which the ratio is based)
+      cell_ratio_series[[i]]$cell <- rep(cells_all[i],ratio_series_length)
+      cell_ratio_series[[i]]$year <- as.numeric(sapply(names(spring_abun_summary), function(x) rep(x,times=2)))[-1]
+      cell_ratio_series[[i]]$period <- rep(rev(period), length.out=ratio_series_length)
+      
       cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
       cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
-      
       cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
       cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
       
@@ -304,20 +311,23 @@ data <- readRDS(file_species)
 
 ##### Get demographic indices #####
 cell_ratios <- get_ratios(data$abun, cells_all)
+tidy_ratios <- do.call(rbind,lapply(cell_ratios$summary[!is.na(cell_ratios$summary)], as_tibble))
+
+tidy_ratios
 
 ######################
 # REVIEWED UNTIL HERE
 ######################
-cell_ratios$summary
 
 # Plot the cell ratio series
 dev.off()
-for (i in 1:length(cell_ratio_series)) {
+cells <- unique(data$abun$spring[[1]]$cell)
+for (i in 1:length(cell_ratios$summary)) {
   if (cells_all[i] %in% cells) {
-    if(sum(is.na(cell_ratio_series[[i]]$median)) < 20){ # only do the plot for cells with at least a couple of years
-      plot(cell_ratio_series[[i]]$median, ylim = c(-2,2), pch = 16, main = cells_all[i], col = c("blue", rep(c("red", "blue"), 7)))
-      for(j in 1:length(cell_ratio_series[[i]]$median)){
-        lines(x = c(j,j), y = c(cell_ratio_series[[i]]$q10[j], cell_ratio_series[[i]]$q90[j]))
+    if(sum(is.na(cell_ratios$summary[[i]]$median)) < 20){ # only do the plot for cells with at least a couple of years
+      plot(cell_ratios$summary[[i]]$median, ylim = c(-2,2), pch = 16, main = cells_all[i], col = c("blue", rep(c("red", "blue"), 7)))
+      for(j in 1:length(cell_ratios$summary[[i]]$median)){
+        lines(x = c(j,j), y = c(cell_ratios$summary[[i]]$q10[j], cell_ratios$summary[[i]]$q90[j]))
       }
     }
   }

@@ -62,7 +62,7 @@ years <- c(2006:2019)
 # geographic extent
 extent_space=data.frame(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50)
 # temporal extent should contain a row for spring and fall:
-extent_time = data.frame(period=c("spring","fall"), tgrid_min=c(13,40), tgrid_max=c(16,43), year_min=2018, year_max=2019)
+extent_time = data.frame(period=c("spring","fall"), tgrid_min=c(13,40), tgrid_max=c(16,43), year_min=min(years), year_max=max(years))
 max_altitude = 2000
 max_altitude_above_lat42 = 1500  #QUESTION: what is this for?
 # proceed with second scenario
@@ -195,9 +195,9 @@ sample_grid_abun <- function(species_code, path_erd, checklists, effort_threshol
   for (i in 1:nrow(extent_time)) {
     # filter by effort thresholds
     sp_data_select <- sp_data[cci > effort_thresholds$cci_min &
-                                effort_distance_km <= effort_thresholds$dist_max[i] &
-                                effort_hrs >= effort_thresholds$time_min[i] &
-                                effort_hrs <= effort_thresholds$time_max[i]]
+                                effort_distance_km <= effort_thresholds$dist_max &
+                                effort_hrs >= effort_thresholds$time_min &
+                                effort_hrs <= effort_thresholds$time_max]
 
     # loop over years
     years=extent_time$year_min[i]:extent_time$year_max[i]
@@ -308,7 +308,7 @@ cell_ratios <- get_ratios(data$abun, cells_all)
 ######################
 # REVIEWED UNTIL HERE
 ######################
-
+cell_ratios$summary
 
 # Plot the cell ratio series
 dev.off()

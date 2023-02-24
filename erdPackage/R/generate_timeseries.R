@@ -103,6 +103,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
       return(insufficient_return)
     }
     
+    # QUESTION: it seems these indices are conditional on year, i.e. expecting 13 years of data. Needs to be modified to be aware of available years
     if(sum(!is.na(ratio_series$median[1 + 2*c(0:13)])) < n_min_prod) {
       return(insufficient_return)
     }

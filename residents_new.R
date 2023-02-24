@@ -336,6 +336,7 @@ for (i in 1:length(cell_ratios$summary)) {
 # QUESTION: a lot of code below to calculate the standard deviations of the 
 # survival and productivity values. What do we gain relative to a more simple
 # frequentist calculation sd for prod and surv, like:
+tidy_ratios
 tidy_ratios %>%
   group_by(year,period) %>%
   filter(is.finite(avg)) %>%
@@ -348,7 +349,6 @@ tidy_ratios %>%
 cell_ratio_series=cell_ratios$summary
 cell_ratio_series_full=cell_ratios$replicates
 
-
 sd_holder_prod <- sd_holder_surv <- matrix(nrow = length(cells_all), ncol = 100)
 colnames(sd_holder_prod) <- paste0("prod_sd_rep_", 1:100)
 colnames(sd_holder_surv) <- paste0("surv_sd_rep_", 1:100)
@@ -357,25 +357,34 @@ cell_lrat_sd <- cbind(data.frame(cell = cells_all, n_prod = NA, n_surv = NA),
                       as.data.frame(sd_holder_prod), as.data.frame(sd_holder_surv))
 var_p <- var_d <- rep(NA, length(cells_all))
 
+# cell for which we have data (subset of cells_all)
+cells <- unique(data$abun$spring[[1]]$cell)
+
 lrat_skews <- lrat_kurts <- vector()
 diagnostic_failure <- 0
+# QUESTION/TODO: this for-loop should be its own function acting on cell_ratios object
 for(i in seq_along(cells_all)){
   print(i)
   if(!identical(cell_ratio_series[[i]], NA)){
     lrats_avg <- cell_ratio_series[[i]]$avg
+    # QUESTION: can we move thresholding by use_cell_years() to get_ratios()?
     lrats_avg[!use_cell_years(cell_ratio_series[[i]], inf_exclude=T)] <- NA
     if (cells_all[i] %in% cells & !all(is.na(lrats_avg))) {
+      # QUESTION: should this threshold of 5 be user-specifiable? Why 5?
       assertthat::assert_that(sum(!is.na(lrats_avg)) >= 5)
+      # QUESTION/TODO: 13 likely refers to years, should be made year-independent
       prod_rats <- lrats_avg[1 + 2*c(1:13)]
       surv_rats <- lrats_avg[2*c(1:13)]
+      
+      # QUESTION/TODO: move these 5 stats can be moved to get_ratios()
       cell_lrat_sd$n_prod[i] <- sum(!is.na(prod_rats))
       cell_lrat_sd$n_surv[i] <- sum(!is.na(surv_rats))
-
       lrat_means <- rowMeans(cell_ratio_series_full[[i]])
       lrat_sds <- apply(cell_ratio_series_full[[i]], 1, sd)
       lrat_skews1 <- apply(cell_ratio_series_full[[i]], 1, moments::skewness)
       lrat_kurts1 <- apply(cell_ratio_series_full[[i]], 1, moments::kurtosis)
-
+      
+      #QUESTION/TODO: prod_df ans surv_df and their rbind is already available in tidy_ratios above
       prod_df <- data.frame(ratio = lrat_means[1 + 2*c(1:13)],
                             sd = lrat_sds[1 + 2*c(1:13)],
                             season = "prod")
@@ -392,13 +401,16 @@ for(i in seq_along(cells_all)){
       #QUESTION: please add some rationale in comments for this main formula
       mod_formula <- bf(ratio | resp_se(sd, sigma = TRUE) ~ season,
                         sigma ~ season)
-
+      
+      #QUESTION: should this threshold of 4 be user-defineable? Why at least 4?
       if(sum(!is.na(prod_df$ratio)) > 4 & sum(!is.na(surv_df$ratio)) > 4){
+        # appending lrat_skews1 to lrat_skews
         lrat_skews <- c(lrat_skews, lrat_skews1)
         lrat_kurts <- c(lrat_kurts, lrat_kurts1)
         # mod <- brm(mod_formula, data = model_df, family = gaussian(),
         #            iter = 2000, warmup = 1000, chains = 3, refresh = 0,
         #            backend = "cmdstanr")
+        # QUESTION: what are these diagnostics? Should parameters .8, 2000, .99, 4000, 'warmup', 'chains' occurring below be user-defineable?
         # diagnostics <- check_brmsfit_diagnostics(mod)
         # if (!all(diagnostics)) {
         #   adapt_delta <- .8
@@ -417,6 +429,7 @@ for(i in seq_along(cells_all)){
         # }
         # if (all(diagnostics)) {
         #   d <- as_draws_df(mod)
+        # QUESTION: what is b_sigma_seasonsurv, where is it defined?
         #   var_p[i] <- mean(d$b_sigma_seasonsurv > 0)
         #   var_d[i] <- mean(d$b_sigma_seasonsurv)
         # } else {
@@ -460,8 +473,8 @@ saveRDS(var_p, paste0("macrodemography/var_p_", species, ".RDS"))
 var_p <- readRDS(paste0(path_brms_results,"/var_p_", species, ".RDS"))
 var_d <- readRDS(paste0(path_brms_results,"/var_d_", species, ".RDS"))
 
-data.frame(cell=cells_all, var_p, var_d)
-
+data.frame(cell=cells_all, var_p, var_d) %>%
+  left_join(tidy_ratios, by="cell")
 
 
 plotting_data <- data.frame(cell = cells_all,

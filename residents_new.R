@@ -484,7 +484,7 @@ plotting_data <- data.frame(cell = cells_all,
                             surv_sd_diff = var_d)
 
 grid_large <- dggridR::dgconstruct(res = 6)
-
+# QUESTION: frame and wrapcells not available in dggridR version 3.0.0, please update
 grid <- dggridR::dgcellstogrid(grid_large,plotting_data$cell,frame=TRUE,wrapcells=TRUE)
 grid  <- merge(grid,plotting_data,by.x="cell")
 

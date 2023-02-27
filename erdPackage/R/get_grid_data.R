@@ -36,8 +36,8 @@ get_grid_data <- function(data, .year,
   zfd$cells_large <- dggridR::dgGEO_to_SEQNUM(dg_large, zfd$longitude, zfd$latitude)$seqnum
   zfd$cells_small <- dggridR::dgGEO_to_SEQNUM(dg_small, zfd$longitude, zfd$latitude)$seqnum
 
-  pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small)
-  all_cells_small <- pixels$conus_small$cell[pixels$conus_small$cell_large %in% zfd$cells_large]
+  pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi = roi)
+  all_cells_small <- pixels$roi_small$cell[pixels$roi_small$cell_large %in% zfd$cells_large]
   
   if (time_window == "gridded") {
     cl <- parallel::makeCluster(.cores, "FORK")
@@ -86,26 +86,26 @@ get_tgrid <- function(days=7) {
 #' get a hexagonal grid over the contiguous US
 #' @param dg_large large dggridR grid
 #' @param dg_small small dggridR grid
-get_pixels <- function(dg_large, dg_small) {
-  conus <- spData::us_states
+#' @param roi an sf multipolygon object defining the Region Of Interest (ROI)
+get_pixels <- function(dg_large, dg_small, roi) {
   # QUESTION: this rater definition is US-specific, how to generalize?
   # QUESTION: differs from extent defined earlier: extent=c(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50), is this necessary?
-  conus_raster <- fasterize::fasterize(conus,
+  roi_raster <- fasterize::fasterize(roi,
                                        raster::raster(ncol=1000, nrow = 1000, 
                                                       xmn = -125, xmx = -66, 
                                                       ymn =24, ymx = 50))
-  conus_coords <- raster::as.data.frame(conus_raster, xy = T)
-  conus_coords <- conus_coords[!is.na(conus_coords$layer), ]
-  conus_cells <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_large, conus_coords$x, conus_coords$y)[[1]]))
-  conus_cells$lat <- dggridR::dgSEQNUM_to_GEO(dg_large, conus_cells$cell)$lat_deg
-  conus_cells$lon <- dggridR::dgSEQNUM_to_GEO(dg_large, conus_cells$cell)$lon_deg
+  roi_coords <- raster::as.data.frame(roi_raster, xy = T)
+  roi_coords <- roi_coords[!is.na(roi_coords$layer), ]
+  roi_cells <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_large, roi_coords$x, roi_coords$y)[[1]]))
+  roi_cells$lat <- dggridR::dgSEQNUM_to_GEO(dg_large, roi_cells$cell)$lat_deg
+  roi_cells$lon <- dggridR::dgSEQNUM_to_GEO(dg_large, roi_cells$cell)$lon_deg
   
-  conus_cells_small <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_small, conus_coords$x, conus_coords$y)[[1]]))
-  conus_cells_small$lat <- dggridR::dgSEQNUM_to_GEO(dg_small, conus_cells_small$cell)$lat_deg
-  conus_cells_small$lon <- dggridR::dgSEQNUM_to_GEO(dg_small, conus_cells_small$cell)$lon_deg
-  conus_cells_small$cell_large <- dggridR::dgGEO_to_SEQNUM(dg_large, conus_cells_small$lon, conus_cells_small$lat)[[1]]
+  roi_cells_small <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_small, roi_coords$x, roi_coords$y)[[1]]))
+  roi_cells_small$lat <- dggridR::dgSEQNUM_to_GEO(dg_small, roi_cells_small$cell)$lat_deg
+  roi_cells_small$lon <- dggridR::dgSEQNUM_to_GEO(dg_small, roi_cells_small$cell)$lon_deg
+  roi_cells_small$cell_large <- dggridR::dgGEO_to_SEQNUM(dg_large, roi_cells_small$lon, roi_cells_small$lat)[[1]]
   
-  out <- list(conus_large = conus_cells, conus_small = conus_cells_small)
+  out <- list(roi_large = roi_cells, roi_small = roi_cells_small)
   return(out)
 }
 

@@ -17,3 +17,7 @@ data.frame of abundances
 \description{
 Function to extract cell-specific abundance data
 }
+\details{
+The output data.frame has columns \code{cell} for the cell index, \code{average} for the average abundance, and columns \code{rep_i}
+containing the replicates of sampled abundance on which \code{average} is based.
+}

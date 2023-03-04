@@ -9,12 +9,14 @@ get_grid_data(
   .year,
   tgrid_min,
   tgrid_max,
-  time_window = "weekly",
+  time_window = "gridded",
   min_lat,
   max_lat,
   min_lon,
+  max_lon = Inf,
   large_grid = 6,
   small_grid = 11,
+  time_grid = 7,
   .cores = 4
 )
 }
@@ -23,11 +25,11 @@ get_grid_data(
 
 \item{.year}{the year}
 
-\item{tgrid_min}{the minimum week of year}
+\item{tgrid_min}{the minimum time grid index (week number if \code{time_grid=7}).}
 
-\item{tgrid_max}{the maximum week of year}
+\item{tgrid_max}{the maximum time grid index (week number if \code{time_grid=7}).}
 
-\item{time_window}{"weekly" or "full"}
+\item{time_window}{"gridded" or "full"}
 
 \item{min_lat}{the minimum latitude (decimal degrees) where the prediction is desired}
 
@@ -35,9 +37,15 @@ get_grid_data(
 
 \item{min_lon}{the minimum longitude}
 
+\item{max_lon}{the maximum longitude}
+
 \item{large_grid}{the dggridR resolution of the large grid}
 
 \item{small_grid}{the dggridR resolution of the small grid}
+
+\item{time_grid}{the temporal grid size in days (default 7, one week).}
+
+\item{.cores}{number of parallel cores for \code{get_cell_data()} calls}
 }
 \description{
 Get eBird summaries on cells of a small grid, tagged with membership in a large grid.

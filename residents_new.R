@@ -1,28 +1,152 @@
-##### Set up the working directory #####
-socolar.desktop <- file.exists('/Users/jacobsocolar/Dropbox/Work/Code/code_keychain/machine_identifier_n5L8paM.txt')
-socolar.laptop <- file.exists('/Users/jacob/Dropbox/Work/Code/code_keychain/machine_identifier_n5L8paM.txt')
-if(socolar.desktop){
-  dir.path <- "/Users/JacobSocolar/Dropbox/Work"
-}else if(socolar.laptop){
-  dir.path <- "/Users/jacob/Dropbox/Work"
-}
-setwd(dir.path)
+#################################
+# load libraries
+#################################
 
-# Change to appropriate remotes::install_github
-install.packages("Code/macrodemography/erdPackage", 
-                 repos = NULL, 
-                 type = "source")
+# authorization token for private repo
+auth_token=readLines("token")
+
+# Install erdPackage
+if(!"erdPackage" %in% rownames(installed.packages()))
+  devtools::install_github("adokter/macrodemography", subdir="erdPackage", auth_token=auth_token)
+
+# load libraries
 library(erdPackage)
-library(data.table)
+library(data.table) # note openmp not enabled on Mac by default. QUESTION: does this severely affect efficiency?
 library(brms)
 library(ggplot2)
+library(dplyr)
+library(magrittr)
+library(sf)
+library(dtplyr) # enable dplyr for data.table
+library(assertthat)
+library(ebirdst)
+library(fasterize)
 
-#cols_bd <- c(pals::brewer.brbg(401)[1:201], "white", pals::ocean.curl(401)[201:1])
+#################################
+# paths
+#################################
+
+# set work directory
+repo_path = "~/git/macrodemography"
+
+# set work directory
+setwd(repo_path)
+
+# where to write output
+output_path = ""
+# path to erd
+path_erd = "~/Dropbox/macrodemography/erd/erd.db"
+# path to checkist file (see flag import_checklists_from_db)
+path_checklists = "~/Dropbox/macrodemography/erd/imported_checklists.RDS"
+path_data = "~/Dropbox/macrodemography_refactor/data/residents"
+path_checklists_filtered = "~/Dropbox/macrodemography_refactor/data/filtered_checklists.RDS"
+path_brms_results = "~/Dropbox/macrodemography"
+
+#################################
+# flags
+#################################
+
+# re-create checklist file set by path_checklists by loading from erd.db
+import_checklists_from_db = FALSE
+# re-create filtered checklist file by applying spatial/temporal extents
+filter_checklists = FALSE
+
+# re-sample species from erd on small/large grids
+resample_data = FALSE
+
+#################################
+# parameters
+#################################
+
+# years to consider:
+years <- c(2006:2019)
+# geographic extent
+extent_space=data.frame(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50)
+# temporal extent should contain a row for spring and fall:
+extent_time = data.frame(period=c("spring","fall"), tgrid_min=c(13,40), tgrid_max=c(16,43), year_min=min(years), year_max=max(years))
+max_altitude = 2000
+max_altitude_above_lat42 = 1500  #QUESTION: what is this for?
+# proceed with second scenario
+effort_thresholds <- data.frame(dist_max=3, time_min=5/60, time_max=1, cci_min=0)
+# set hexagon grid area:
+hexagon_area_large <- 70000
+hexagon_area_small <- 300
+# define hexagon grid
+# for an area of ~ 70000 km^2, we get a resolution of 6:
+grid_large <- dggridR::dgconstruct(area = hexagon_area_large)
+# for an area of ~ 300 km^2, we get a resolution of 11:
+grid_small <- dggridR::dgconstruct(area = hexagon_area_small)
+
+# time grid in days
+time_grid <- 7
+# minimum number of small cells to compute abundance index for large cell
+n_small_min = 10
+
+# species (4 and 6 letter abbreviations)
+# QUESTION: why two definitions? suggest moving to eBird species codes, see e.g. ebirdst::ebirdst_runs
+species <- data.frame(four = c("bcch", "bhnu", "cach", "carw", "noca", "piwo", "tuti",
+                               "canw", "cacw", "wren", "calt", "cant", "cath", "cbth", "lbth",
+                               "btgn", "verd", "pyrr", "oati", "juti", "casj", "wosj"),
+                      six = c("bkcchi", "bnhnut", "carchi", "carwre", "norcar", "pilwoo", "tuftit",
+                              "canwre", "cacwre", "wrenti", "caltow", "cantow", "calthr", "cubthr", "lobthr",
+                              "bktgna", "verdin", "pyrrhu", "oaktit", "juntit", "cowscj", "wooscj"))
+# species to process
+species_to_process <- c("carwre","norcar")
+
+# print more species info:
+ebirdst::ebirdst_runs %>% filter(substr(species_code,1,6) %in% species$six)
+
+#################################
+# load checklists
+#################################
+if(import_checklists_from_db){
+  checklists <- import_checklists(path_erd)
+  saveRDS(checklists, path_checklists)
+} else{
+  if(filter_checklists) checklists <- readRDS(path_checklists)
+}
+
+#################################
+# filter checklists for extent, altitude and year
+#################################
+if(filter_checklists){
+  # filter checklists for extent, year and elevation
+  checklists %>%
+    filter(latitude > extent_space$min_lat &
+             latitude < extent_space$max_lat &
+             longitude > extent_space$min_lon &
+             longitude < extent_space$max_lon &
+             year >= min(years) &
+             year <= max(years) &
+             ELEV_30M_MEDIAN < max_altitude &
+             ((ELEV_30M_MEDIAN < max_altitude_above_lat42) | (latitude < 42))  # QUESTION: why this selection?
+    ) -> checklists
+  
+  # add hexagon indices to checklists (takes ~2-3 minutes ...)
+  mutate(checklists, seqnum=dggridR::dgGEO_to_SEQNUM(grid_large, longitude, latitude)[[1]]) -> checklists
+  # writing results to file, since above statement takes annoyingly long
+  # TODO: may want to add this to all checklists once, as part of previous load_checklists section
+  saveRDS(checklists, path_checklists_filtered)
+  } else{
+  if(import_checklists_from_db) warning("import_checklists_from_db equals TRUE, consider refiltering checklists as well by setting filter_checklists=TRUE")
+  checklists <- readRDS(path_checklists_filtered)
+}
+
+# extract unique hexagons
+cells_all <- unique(checklists$seqnum)
+
+
+#################################
+# color scales, themes, map data
+#################################
+
+# set color scales
 cols_bd <- c(hsv(seq(0,.17,length.out = 100),1,seq(.9,.6,length.out = 100)), hsv(seq(.45,.65, length.out = 100),1,seq(.6,1,length.out = 100)))
 cols_bd2 <- c(hsv(seq(0,.17,length.out = 100),seq(1, .2, length.out = 100),.9), hsv(seq(.45,.65, length.out = 100),seq(.2, 1, length.out = 100),.9))
 
-blank_theme <- 
-  theme(panel.grid.major = element_blank(), 
+# blank ggplot2 theme
+blank_theme <-
+  theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         panel.background = element_blank(),
         axis.text.x=element_blank(),
@@ -31,151 +155,200 @@ blank_theme <-
         axis.ticks.y=element_blank(),
         axis.title.x = element_blank(),
         axis.title.y = element_blank()
-        )
+  )
 
-states <- map_data("state")
 western_states <- c("arizona", "california", "colorado", "idaho", "montana",
                     "nevada", "new mexico", "oregon", "utah", "washington",
                     "wyoming")
-states <- states[!states$region %in% western_states,]
-
-##### Import ERD #####
-years <- c(2006:2019)
-cci_min <- c(-100, 0, .5)
-effort_lim <- data.frame(dist_max = c(1, 3, 3),
-                         time_min = c(5/60, 5/60, 15/60),
-                         time_max = c(.5, 1, 1))
-
-#checklists <- import_checklists("macrodemography/erd/erd.db")
-
-#saveRDS(checklists, "macrodemography/erd/imported_checklists.RDS")
-checklists <- readRDS("macrodemography/erd/imported_checklists.RDS")
-
-checklists <- checklists[checklists$latitude > 23 & 
-                           checklists$latitude < 50 & 
-                           checklists$longitude > -128 &
-                           checklists$longitude < -60 &
-                           checklists$year >= min(years) &
-                           checklists$year <= max(years) &
-                           checklists$ELEV_30M_MEDIAN < 2000 &
-                           ((checklists$ELEV_30M_MEDIAN < 1500) | (checklists$latitude < 42)),]
-
-grid6 <- dggridR::dgconstruct(res = 6)
-cells_all <- unique(dggridR::dgGEO_to_SEQNUM(grid6, checklists$longitude, checklists$latitude)[[1]])
-
-species <- data.frame(four = c("bcch", "bhnu", "cach", "carw", "noca", "piwo", "tuti", 
-                               "canw", "cacw", "wren", "calt", "cant", "cath", "cbth", "lbth", 
-                               "btgn", "verd", "pyrr", "oati", "juti", "casj", "wosj"),
-                      six = c("bkcchi", "bnhnut", "carchi", "carwre", "norcar", "pilwoo", "tuftit",
-                              "canwre", "cacwre", "wrenti", "caltow", "cantow", "calthr", "cubthr", "lobthr",
-                              "bktgna", "verdin", "pyrrhu", "oaktit", "juntit", "cowscj", "wooscj"))
-
-# for(sp in 1:nrow(species)){
-#   sp_data <- import_from_erd(species$six[sp],
-#                              erd_path = "macrodemography/erd/erd.db",
-#                              checklists = checklists)
-#   dir.create(paste0("macrodemography/residents/", species$four[sp]))
-#   spring_data <- fall_data <- list()
-#   for (i in 1:(length(cci_min))) {
-#     spring_data[[i]] <- fall_data[[i]] <- list()
-#     spd2 <- sp_data[cci > cci_min[i]]
-#     for (j in 1:nrow(effort_lim)) {
-#       spd3 <- spd2[effort_distance_km <= effort_lim$dist_max[j] &
-#                      effort_hrs >= effort_lim$time_min[j] &
-#                      effort_hrs <= effort_lim$time_max[j]]
-# 
-#       spring_data[[i]][[j]] <- fall_data[[i]][[j]] <- list()
-#       for (y in seq_along(years)) {
-#         print(paste(i,j,y))
-#         if (i == 2 & j == 2) {
-#           spring_data[[i]][[j]][[y]] <- get_grid_data(data = spd3, .year = years[y],
-#                                                       tgrid_min = 13, tgrid_max = 16, time_window = "full",
-#                                                       min_lat = 23, max_lat = 50, min_lon = -128)
-#           fall_data[[i]][[j]][[y]] <- get_grid_data(data = spd3, .year = years[y],
-#                                                     tgrid_min = 40, tgrid_max = 43, time_window = "full",
-#                                                     min_lat = 23, max_lat = 50, min_lon = -128)
-#         }
-#       }
-#     }
-#   }
-# 
-#   saveRDS(spring_data, paste0("macrodemography/residents/", species$four[sp], "/spring_data_fullwindow.RDS"))
-#   saveRDS(fall_data, paste0("macrodemography/residents/", species$four[sp], "/fall_data_fullwindow.RDS"))
-# 
-#   cci_index <- 2
-#   effort_index <- 2
-# 
-#   spring_abun_data <- fall_abun_data <- list()
-#   for (y in seq_along(years)) {
-#     print(years[y])
-#     spring_abun_data[[y]] <- get_abun(spring_data[[cci_index]][[effort_index]][[y]], n_rep = 100)
-#     fall_abun_data[[y]] <- get_abun(fall_data[[cci_index]][[effort_index]][[y]], n_rep = 100)
-#   }
-# 
-# 
-#   saveRDS(spring_abun_data, paste0("macrodemography/residents/", species$four[sp], "/spring_abun_data_fullwindow.RDS"))
-#   saveRDS(fall_abun_data,  paste0("macrodemography/residents/", species$four[sp], "/fall_abun_data_fullwindow.RDS"))
-# }
+states <- map_data("state") %>% filter(region %in% western_states)
 
 
-##### Declare species #####
-species <- "CARW"
+#################################
+# functions
+#################################
 
-##### Get demographic indices #####
-spring_abun_data <- readRDS(
-  paste0("macrodemography/residents/", species, "/spring_abun_data_fullwindow.RDS")
-)
-fall_abun_data <- readRDS(
-  paste0("macrodemography/residents/", species, "/fall_abun_data_fullwindow.RDS")
-)
+# sample a species given thresholds on effort, space and time
+sample_grid_abun <- function(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=11, large_grid=6, time_grid=7, .cores=4){
+  # verify input arguments
+  assert_that(is.character(species_code))
+  assert_that(file.exists(path_erd))
+  assert_that(is.data.frame(checklists))
+  assert_that(is.data.frame(effort_thresholds))
+  assert_that(all(c("dist_max","time_min","time_max","cci_min") %in% colnames(effort_thresholds)), msg="missing threshold value(s) for dist_max, time_min, time_max, cci_min")
+  assert_that(effort_thresholds$time_min < effort_thresholds$time_max)
+  assert_that(effort_thresholds$dist_max > 0)
+  assert_that(is.data.frame(extent_space))
+  assert_that(all(c("min_lon","max_lon","min_lat","max_lat") %in% colnames(extent_space)), msg="missing threshold value(s) for min_lon, max_lon, min_lat, max_lat")
+  assert_that(extent_space$min_lon < extent_space$max_lon)
+  assert_that(extent_space$min_lat < extent_space$max_lat)
+  assert_that(is.data.frame(extent_time))
+  assert_that(all(extent_time$year_min <= extent_time$year_max))
+  assert_that(all(extent_time$tgrid_min < extent_time$tgrid_max))
+  assert_that(all(c("period","tgrid_min","tgrid_max","year_min", "year_max") %in% colnames(extent_time)), msg="missing threshold value(s) for period, tgrid_min, tgrid_max, year_min, year_max")
+  assert_that(time_window %in% c("gridded", "full"))
 
-assertthat::assert_that(all(spring_abun_data[[1]]$cell %in% cells_all))
-assertthat::assert_that(all(fall_abun_data[[1]]$cell %in% cells_all))
+  # load species data from ERD
+  # takes ~ 2-3 mins for carwre (Carolina Wren)
+  sp_data <- import_from_erd(species_code,
+                             erd_path = path_erd,
+                             checklists = checklists)
 
-# Extract cell-specific abundance data
-spring_abun_summary <- get_abun_summary(spring_abun_data, 10)
-fall_abun_summary <- get_abun_summary(fall_abun_data, 10)
-cell_timeseries <- get_cell_timeseries(cells_all, 
-                                       spring_abun_summary,
-                                       fall_abun_summary)
+  # loop over time periods
+  data_grid <- data_abun <- list()
+  for (i in 1:nrow(extent_time)) {
+    # filter by effort thresholds
+    sp_data_select <- sp_data[cci > effort_thresholds$cci_min &
+                                effort_distance_km <= effort_thresholds$dist_max &
+                                effort_hrs >= effort_thresholds$time_min &
+                                effort_hrs <= effort_thresholds$time_max]
 
-# Take the log-ratios along the timeseries to get a ratio series
-# cell_ratio_series is a summary of the bootstrap uncertainty, and 
-# cell_ratio_series_full gives all bootstrap replicates.
-cells <- unique(spring_abun_summary[[1]]$cell)
-cell_ratio_series <- cell_ratio_series_full <- list()
-for (i in 1:length(cell_timeseries)) {
-  if (cells_all[i] %in% cells) {
-    lrats <- apply(cell_timeseries[[i]][ ,2:101], 2, function(x){log(stocks::ratios(x))})
-    cell_ratio_series[[i]] <- list()
-    cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
-    cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
-    
-    cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
-    cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
-    
-    cell_ratio_series_full[[i]] <- lrats
-  } else {
-    cell_ratio_series[[i]] <- cell_ratio_series_full[[i]] <- NA
+    # loop over years
+    years=extent_time$year_min[i]:extent_time$year_max[i]
+    # initialize year lists
+    data_grid[[i]] <- data_abun[[i]] <- list()
+    for (y in seq_along(years)) {
+
+      print(paste("grid sampling",species_code,"data for",extent_time$period[i],years[y],"..."))
+
+      data_grid[[i]][[y]] <- get_grid_data(data = sp_data_select,
+                                           .year = years[y],
+                                           tgrid_min = extent_time$tgrid_min[i], tgrid_max = extent_time$tgrid_max[i],
+                                           time_window = time_window,
+                                           min_lat = extent_space$min_lat, max_lat = extent_space$max_lat, min_lon = extent_space$min_lon, max_lon = extent_space$max_lon,
+                                           large_grid=large_grid, small_grid=small_grid, time_grid=time_grid)
+
+      data_abun[[i]][[y]] <- get_abun(data_grid[[i]][[y]], n_rep=100)
+    }
+    names(data_grid[[i]]) <- years
+    names(data_abun[[i]]) <- years
+  }
+  names(data_grid) <- extent_time$period
+  names(data_abun) <- extent_time$period
+
+  output <- list(grid=data_grid, abun=data_abun)
+}
+
+get_ratios <- function(data, cells_all, period=c("spring", "fall")){
+  # verify we have all periods (spring and fall) available
+  assert_that(all(period %in% names(data)))
+  assert_that(length(period)==2)
+  assert_that(is.character(period))
+  # verify that loaded data contains no unknown grid cells
+  # QUESTION: in what situation could this evaluate to FALSE?
+  cells_present <- sapply(period, function(x) assert_that(all(data[[x]][[1]]$cell %in% cells_all)))
+  assert_that(all(cells_present), msg="loaded data contains unknown grid cells")
+  
+  message(paste("calculating ratios with period1 =",period[1],"and period2 =",period[2]))
+  
+  # Extract cell-specific abundance data
+  spring_abun_summary <- get_abun_summary(data[[period[1]]], n_small_min)
+  fall_abun_summary <- get_abun_summary(data[[period[2]]], n_small_min)
+  cell_timeseries <- get_cell_timeseries(cells_all,
+                                         spring_abun_summary,
+                                         fall_abun_summary)
+    # Take the log-ratios along the timeseries to get a ratio series
+  # cell_ratio_series is a summary of the bootstrap uncertainty, and
+  # cell_ratio_series_full gives all bootstrap replicates.
+  cells <- unique(spring_abun_summary[[1]]$cell)
+  cell_ratio_series <- cell_ratio_series_full <- list()
+  ratio_series_length <- 2*length(spring_abun_summary)-1
+  
+  for (i in 1:length(cell_timeseries)) {
+    if (cells_all[i] %in% cells) {
+      # calculate logarithmic ratios (lrats)
+      lrats <- apply(cell_timeseries[[i]][ ,2:ncol(cell_timeseries[[i]])], 2, function(x){log(stocks::ratios(x))})
+      cell_ratio_series[[i]] <- list()
+      
+      # cell / year / reference period (named after the latest period on which the ratio is based)
+      cell_ratio_series[[i]]$cell <- rep(cells_all[i],ratio_series_length)
+      cell_ratio_series[[i]]$year <- as.numeric(sapply(names(spring_abun_summary), function(x) rep(x,times=2)))[-1]
+      cell_ratio_series[[i]]$period <- rep(rev(period), length.out=ratio_series_length)
+      
+      cell_ratio_series[[i]]$median <- apply(lrats, 1, median)
+      cell_ratio_series[[i]]$avg <- apply(lrats, 1, mean)
+      cell_ratio_series[[i]]$sd <- apply(lrats, 1, sd)
+      cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
+      cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
+      
+      cell_ratio_series_full[[i]] <- lrats
+    } else {
+      cell_ratio_series[[i]] <- cell_ratio_series_full[[i]] <- NA
+    }
+  }
+  
+  # make output a named list:
+  names(cell_ratio_series) <- names(cell_timeseries)
+  names(cell_ratio_series_full) <- names(cell_timeseries)
+  
+  return(list(summary=cell_ratio_series, replicates=cell_ratio_series_full))
+}
+
+
+#################################
+# sample small/large grids for each species
+#################################
+
+if(resample_data){
+  for(species_code in species_to_process){
+    # sample the data
+    data <- sample_grid_abun(species_code, path_erd, checklists, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=grid_small$res, large_grid=grid_large$res, time_grid=7)
+    # create output filename
+    file_out <- paste0(path_data, "/data_", species_code , ".rds")
+    # create output directory if not present
+    if(!dir.exists(dirname(file_out))) dir.create(dirname(file_out), recursive = TRUE)
+    # save the data to .rds file
+    saveRDS(data, file_out)
   }
 }
 
+#################################
+# Calculate spring/fall log-ratios 
+#################################
+
+##### Declare species #####
+species <- "carwre"  # use consistent 6-letter convention throughout
+
+##### load abundance data #####
+file_species <- list.files(paste0(path_data), pattern=".rds$", full.names=T) %>% as_tibble %>% filter(grepl(species,value)) %>% pull(value)
+print(paste("loading data from file", file_species,"..."))
+data <- readRDS(file_species)
+
+##### Get demographic indices #####
+cell_ratios <- get_ratios(data$abun, cells_all)
+tidy_ratios <- do.call(rbind,lapply(cell_ratios$summary[!is.na(cell_ratios$summary)], as_tibble))
+
 # Plot the cell ratio series
 dev.off()
-for (i in 1:length(cell_ratio_series)) {
+cells <- unique(data$abun$spring[[1]]$cell)
+for (i in 1:length(cell_ratios$summary)) {
   if (cells_all[i] %in% cells) {
-    if(sum(is.na(cell_ratio_series[[i]]$median)) < 20){ # only do the plot for cells with at least a couple of years
-      plot(cell_ratio_series[[i]]$median, ylim = c(-2,2), pch = 16, main = cells_all[i], col = c("blue", rep(c("red", "blue"), 7)))
-      for(j in 1:length(cell_ratio_series[[i]]$median)){
-        lines(x = c(j,j), y = c(cell_ratio_series[[i]]$q10[j], cell_ratio_series[[i]]$q90[j]))
+    if(sum(is.na(cell_ratios$summary[[i]]$median)) < 20){ # only do the plot for cells with at least a couple of years
+      plot(cell_ratios$summary[[i]]$median, ylim = c(-2,2), pch = 16, main = cells_all[i], col = c("blue", rep(c("red", "blue"), 7)))
+      for(j in 1:length(cell_ratios$summary[[i]]$median)){
+        lines(x = c(j,j), y = c(cell_ratios$summary[[i]]$q10[j], cell_ratios$summary[[i]]$q90[j]))
       }
     }
   }
 }
 
-
 ##### Analyze the timeseries #####
-# Get the standard deviations of the survival and productivity values
+
+# QUESTION: a lot of code below to calculate the standard deviations of the 
+# survival and productivity values. What do we gain relative to a more simple
+# frequentist calculation sd for prod and surv, like:
+tidy_ratios
+tidy_ratios %>%
+  group_by(year,period) %>%
+  filter(is.finite(avg)) %>%
+  summarise(across(everything(), \(x) mean(x, na.rm=TRUE))) %>%
+  mutate(season=ifelse(period=="fall", "prod","surv"))
+
+# QUESTION: code below is getting increasingly hard to read, please add
+# more detailed comments to make it understandable for someone new,
+
+cell_ratio_series=cell_ratios$summary
+cell_ratio_series_full=cell_ratios$replicates
+
 sd_holder_prod <- sd_holder_surv <- matrix(nrow = length(cells_all), ncol = 100)
 colnames(sd_holder_prod) <- paste0("prod_sd_rep_", 1:100)
 colnames(sd_holder_surv) <- paste0("surv_sd_rep_", 1:100)
@@ -184,26 +357,34 @@ cell_lrat_sd <- cbind(data.frame(cell = cells_all, n_prod = NA, n_surv = NA),
                       as.data.frame(sd_holder_prod), as.data.frame(sd_holder_surv))
 var_p <- var_d <- rep(NA, length(cells_all))
 
+# cell for which we have data (subset of cells_all)
+cells <- unique(data$abun$spring[[1]]$cell)
 
 lrat_skews <- lrat_kurts <- vector()
 diagnostic_failure <- 0
+# QUESTION/TODO: this for-loop should be its own function acting on cell_ratios object
 for(i in seq_along(cells_all)){
   print(i)
   if(!identical(cell_ratio_series[[i]], NA)){
     lrats_avg <- cell_ratio_series[[i]]$avg
+    # QUESTION: can we move thresholding by use_cell_years() to get_ratios()?
     lrats_avg[!use_cell_years(cell_ratio_series[[i]], inf_exclude=T)] <- NA
     if (cells_all[i] %in% cells & !all(is.na(lrats_avg))) {
+      # QUESTION: should this threshold of 5 be user-specifiable? Why 5?
       assertthat::assert_that(sum(!is.na(lrats_avg)) >= 5)
+      # QUESTION/TODO: 13 likely refers to years, should be made year-independent
       prod_rats <- lrats_avg[1 + 2*c(1:13)]
       surv_rats <- lrats_avg[2*c(1:13)]
+      
+      # QUESTION/TODO: move these 5 stats can be moved to get_ratios()
       cell_lrat_sd$n_prod[i] <- sum(!is.na(prod_rats))
       cell_lrat_sd$n_surv[i] <- sum(!is.na(surv_rats))
-
       lrat_means <- rowMeans(cell_ratio_series_full[[i]])
       lrat_sds <- apply(cell_ratio_series_full[[i]], 1, sd)
       lrat_skews1 <- apply(cell_ratio_series_full[[i]], 1, moments::skewness)
       lrat_kurts1 <- apply(cell_ratio_series_full[[i]], 1, moments::kurtosis)
-
+      
+      #QUESTION/TODO: prod_df ans surv_df and their rbind is already available in tidy_ratios above
       prod_df <- data.frame(ratio = lrat_means[1 + 2*c(1:13)],
                             sd = lrat_sds[1 + 2*c(1:13)],
                             season = "prod")
@@ -217,15 +398,19 @@ for(i in seq_along(cells_all)){
 
       model_df <- rbind(prod_df, surv_df)
 
+      #QUESTION: please add some rationale in comments for this main formula
       mod_formula <- bf(ratio | resp_se(sd, sigma = TRUE) ~ season,
                         sigma ~ season)
-
+      
+      #QUESTION: should this threshold of 4 be user-defineable? Why at least 4?
       if(sum(!is.na(prod_df$ratio)) > 4 & sum(!is.na(surv_df$ratio)) > 4){
+        # appending lrat_skews1 to lrat_skews
         lrat_skews <- c(lrat_skews, lrat_skews1)
         lrat_kurts <- c(lrat_kurts, lrat_kurts1)
         # mod <- brm(mod_formula, data = model_df, family = gaussian(),
         #            iter = 2000, warmup = 1000, chains = 3, refresh = 0,
         #            backend = "cmdstanr")
+        # QUESTION: what are these diagnostics? Should parameters .8, 2000, .99, 4000, 'warmup', 'chains' occurring below be user-defineable?
         # diagnostics <- check_brmsfit_diagnostics(mod)
         # if (!all(diagnostics)) {
         #   adapt_delta <- .8
@@ -244,6 +429,7 @@ for(i in seq_along(cells_all)){
         # }
         # if (all(diagnostics)) {
         #   d <- as_draws_df(mod)
+        # QUESTION: what is b_sigma_seasonsurv, where is it defined?
         #   var_p[i] <- mean(d$b_sigma_seasonsurv > 0)
         #   var_d[i] <- mean(d$b_sigma_seasonsurv)
         # } else {
@@ -255,20 +441,26 @@ for(i in seq_along(cells_all)){
   }
 }
 
+######################
+# REVIEWED UNTIL HERE
+######################
+
+
+
 assertthat::assert_that(!diagnostic_failure)
 
 skews_kurts <- data.frame(
   skew = lrat_skews,
   `excess kurtosis` = lrat_kurts - 3)
 
-ggplot(skews_kurts, aes(skew)) + 
+ggplot(skews_kurts, aes(skew)) +
   geom_density() + theme(
     axis.title.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.text.y = element_blank()
   ) + xlab("skewness")
 
-ggplot(skews_kurts, aes(excess.kurtosis)) + 
+ggplot(skews_kurts, aes(excess.kurtosis)) +
   geom_density() + theme(
     axis.title.y = element_blank(),
     axis.ticks.y = element_blank(),
@@ -277,18 +469,23 @@ ggplot(skews_kurts, aes(excess.kurtosis)) +
 
 saveRDS(var_d, paste0("macrodemography/var_d_", species, ".RDS"))
 saveRDS(var_p, paste0("macrodemography/var_p_", species, ".RDS"))
-var_p <- readRDS(paste0("macrodemography/var_p_", species, ".RDS"))
-var_d <- readRDS(paste0("macrodemography/var_d_", species, ".RDS"))
+# QUESTION: what are var_p and var_d?
+var_p <- readRDS(paste0(path_brms_results,"/var_p_", species, ".RDS"))
+var_d <- readRDS(paste0(path_brms_results,"/var_d_", species, ".RDS"))
 
-plotting_data <- data.frame(cell = cells_all, 
-                            n_prod = cell_lrat_sd$n_prod, 
-                            n_surv = cell_lrat_sd$n_surv, 
+data.frame(cell=cells_all, var_p, var_d) %>%
+  left_join(tidy_ratios, by="cell")
+
+
+plotting_data <- data.frame(cell = cells_all,
+                            n_prod = cell_lrat_sd$n_prod,
+                            n_surv = cell_lrat_sd$n_surv,
                             p_surv_var_larger = var_p,
                             surv_sd_diff = var_d)
 
-grid6 <- dggridR::dgconstruct(res = 6)
-
-grid <- dggridR::dgcellstogrid(grid6,plotting_data$cell,frame=TRUE,wrapcells=TRUE)
+grid_large <- dggridR::dgconstruct(res = 6)
+# QUESTION: frame and wrapcells not available in dggridR version 3.0.0, please update
+grid <- dggridR::dgcellstogrid(grid_large,plotting_data$cell,frame=TRUE,wrapcells=TRUE)
 grid  <- merge(grid,plotting_data,by.x="cell")
 
 n_min <- 5
@@ -331,9 +528,9 @@ p
 # library(rgee)
 # source("/Users/jacob/Dropbox/Work/Code/macrodemography/analysis/functions/daymet_extract.R")
 # ee_Initialize()
-# 
+#
 # dg <- dgconstruct(res = 6)
-# 
+#
 # janfeb_temp <- julaug_temp <- junjul_precip <- novfeb_precip <-
 #    decmar_swe <- list()
 # for (j in 215:length(cells_all)){ #seq_along(cells_all)) {
@@ -346,25 +543,25 @@ p
 #     mindate = paste0(i+2006, "-01-01")
 #     maxdate = paste0(i+2006, "-02-28")
 #     janfeb_temp[[j]][i] <- daymet_extract(cell = cells_all[j], variable = "tmax", mindate = mindate, maxdate = maxdate)
-# 
+#
 #     mindate = paste0(i+2005, "-07-01")
 #     maxdate = paste0(i+2005, "-08-31")
 #     julaug_temp[[j]][i] <- daymet_extract(cell = cells_all[j], variable = "tmax", mindate = mindate, maxdate = maxdate)
-# 
+#
 #     mindate = paste0(i+2005, "-11-01")
 #     maxdate = paste0(i+2006, "-02-28")
 #     novfeb_precip[[j]][i] <- daymet_extract(cell = cells_all[j], variable = "prcp", mindate = mindate, maxdate = maxdate)
-# 
+#
 #     mindate = paste0(i+2005, "-06-01")
 #     maxdate = paste0(i+2005, "-07-31")
 #     junjul_precip[[j]][i] <- daymet_extract(cell = cells_all[j], variable = "prcp", mindate = mindate, maxdate = maxdate)
-# 
+#
 #     mindate = paste0(i+2005, "-12-01")
 #     maxdate = paste0(i+2006, "-03-15")
 #     decmar_swe[[j]][i] <- daymet_extract(cell = cells_all[j], variable = "swe", mindate = mindate, maxdate = maxdate)
 #   }
 # }
-# 
+#
 # saveRDS(janfeb_temp, "macrodemography/weather/janfeb_temp.RDS")
 # saveRDS(julaug_temp, "macrodemography/weather/julaug_temp.RDS")
 # saveRDS(novfeb_precip, "macrodemography/weather/novfeb_precip.RDS")
@@ -377,25 +574,25 @@ janfeb_temp <- readRDS("macrodemography/weather/janfeb_temp.RDS")
 julaug_temp <- readRDS("macrodemography/weather/julaug_temp.RDS")
 decmar_swe <- readRDS("macrodemography/weather/decmar_swe.RDS")
 
-plotting_data2 <- data.frame(cell = cells_all, 
+plotting_data2 <- data.frame(cell = cells_all,
                              surv_length = NA,
                              prod_length = NA,
                              full_length = NA,
-                             
+
                              janfeb_mean_bayes = NA,
                              janfeb_median_bayes = NA,
                              janfeb_sd_bayes = NA,
                              janfeb_skew_bayes = NA,
                              janfeb_kurt_bayes = NA,
                              janfeb_p_bayes = NA,
-                             
+
                              julaug_mean_bayes = NA,
                              julaug_median_bayes = NA,
                              julaug_sd_bayes = NA,
                              julaug_skew_bayes = NA,
                              julaug_kurt_bayes = NA,
                              julaug_p_bayes = NA,
-                             
+
                              swe_mean_bayes = NA,
                              swe_median_bayes = NA,
                              swe_sd_bayes = NA,
@@ -411,51 +608,51 @@ for (i in seq_along(cells_all)) {
   if(i == 233){next} # This is a cell out over open ocean
   if (!identical(cell_ratio_series[[i]], NA)) {
     crsi <- cell_ratio_series[[i]]
-    
+
     plotting_data2$surv_length[i] <- sum(is.finite(crsi$median[2*c(1:13)]))
     plotting_data2$prod_length[i] <- sum(is.finite(crsi$median[1 + 2*c(0:13)]))
     plotting_data2$full_length[i] <- sum(is.finite(crsi$median[1 + 2*c(1:13)] + crsi$median[2*c(1:13)]))
-    
+
     janfeb_temp_slopes <- julaug_temp_slopes <- janfeb_swe_slopes <- vector()
-    
-    
+
+
     lrat_means <- rowMeans(cell_ratio_series_full[[i]])
     lrat_sds <- apply(cell_ratio_series_full[[i]], 1, sd)
-    
+
     surv_means <- prod_means <- lrat_means
     surv_sds <- prod_sds <- lrat_sds
-    surv_means[!use_cell_years(cell_ratio_series[[i]], 
+    surv_means[!use_cell_years(cell_ratio_series[[i]],
                                inf_exclude = F,
                                n_min_prod = 0,
                                n_min_surv = 5,
                                n_min_full = 0)] <- NA
     surv_means <- surv_means[2*c(1:13)]
-    surv_sds[!use_cell_years(cell_ratio_series[[i]], 
+    surv_sds[!use_cell_years(cell_ratio_series[[i]],
                              inf_exclude = F,
                              n_min_prod = 0,
                              n_min_surv = 5,
                              n_min_full = 0)] <- NA
     surv_sds <- surv_sds[2*c(1:13)]
-    
-    prod_means[!use_cell_years(cell_ratio_series[[i]], 
+
+    prod_means[!use_cell_years(cell_ratio_series[[i]],
                                inf_exclude = F,
                                n_min_prod = 5,
                                n_min_surv = 0,
                                n_min_full = 0)] <- NA
     prod_means <- prod_means[1 + 2*c(0:13)]
-    prod_sds[!use_cell_years(cell_ratio_series[[i]], 
+    prod_sds[!use_cell_years(cell_ratio_series[[i]],
                              inf_exclude = F,
                              n_min_prod = 5,
                              n_min_surv = 0,
                              n_min_full = 0)] <- NA
     prod_sds <- prod_sds[1 + 2*c(0:13)]
-    
+
     if (sum(!is.na(surv_means)) > 2) {
-      surv_df <- data.frame(mean = surv_means, sd = surv_sds, 
+      surv_df <- data.frame(mean = surv_means, sd = surv_sds,
                             janfeb_temp = unlist(janfeb_temp[[i]][1:13]),
                             decmar_swe = sqrt(unlist(decmar_swe[[i]][1:13])))
       janfeb_mod <- brm(bf(mean | resp_se(sd, sigma = TRUE) ~ janfeb_temp),
-                              data = surv_df, family = gaussian(), 
+                              data = surv_df, family = gaussian(),
                               prior = prior(std_normal(), class = "b"),
                               iter = 2000, warmup = 1000, chains = 3, refresh = 0,
                               backend = "cmdstanr")
@@ -470,7 +667,7 @@ for (i in seq_along(cells_all)) {
           iter <- janfeb_iter[i] <- 4000
         }
         janfeb_mod <- brm(bf(mean | resp_se(sd, sigma = TRUE) ~ janfeb_temp),
-                          data = surv_df, family = gaussian(), 
+                          data = surv_df, family = gaussian(),
                           prior = prior(std_normal(), class = "b"),
                           iter = iter, warmup = 1000, adapt_delta = adapt_delta,
                           chains = 3, refresh = 0,
@@ -480,20 +677,20 @@ for (i in seq_along(cells_all)) {
           janfeb_flag <- c(janfeb_flag, i)
         }
       }
-      
+
       janfeb_temp_slopes <- as_draws_df(janfeb_mod)$b_janfeb_temp
-      
+
       plotting_data2$janfeb_mean_bayes[i] <- mean(janfeb_temp_slopes)
       plotting_data2$janfeb_median_bayes[i] <- median(janfeb_temp_slopes)
       plotting_data2$janfeb_sd_bayes[i] <- sd(janfeb_temp_slopes)
       plotting_data2$janfeb_skew_bayes[i] <- moments::skewness(janfeb_temp_slopes)
       plotting_data2$janfeb_kurt_bayes[i] <- moments::kurtosis(janfeb_temp_slopes)
       plotting_data2$janfeb_p_bayes[i] <- sum(janfeb_temp_slopes > 0)
-      
+
       if (sum((surv_df$decmar_swe > 0) & (!is.na(surv_df$mean))) > 2) {
         swe_mod <- brms::brm(bf(mean | resp_se(sd, sigma = TRUE) ~ decmar_swe),
                              prior = prior(std_normal(), class = "b"),
-                             data = surv_df, family = gaussian(), 
+                             data = surv_df, family = gaussian(),
                              iter = 2000, warmup = 1000, chains = 3, refresh = 0,
                              backend = "cmdstanr")
         diagnostics <- check_brmsfit_diagnostics(swe_mod)
@@ -507,7 +704,7 @@ for (i in seq_along(cells_all)) {
             iter <- swe_iter[i] <- 4000
           }
           swe_mod <- brm(bf(mean | resp_se(sd, sigma = TRUE) ~ decmar_swe),
-                            data = surv_df, family = gaussian(), 
+                            data = surv_df, family = gaussian(),
                             prior = prior(std_normal(), class = "b"),
                             iter = iter, warmup = 1000, adapt_delta = adapt_delta,
                             chains = 3, refresh = 0,
@@ -517,10 +714,10 @@ for (i in seq_along(cells_all)) {
             swe_flag <- c(swe_flag, i)
           }
         }
-        
-        
+
+
         swe_slopes <- as_draws_df(swe_mod)$b_decmar_swe
-        
+
         plotting_data2$swe_mean_bayes[i] <- mean(swe_slopes)
         plotting_data2$swe_median_bayes[i] <- median(swe_slopes)
         plotting_data2$swe_sd_bayes[i] <- sd(swe_slopes)
@@ -529,13 +726,13 @@ for (i in seq_along(cells_all)) {
         plotting_data2$swe_p_bayes[i] <- sum(swe_slopes > 0)
       }
     }
-    
-    
+
+
     if (sum(!is.na(prod_means)) > 2) {
-      prod_df <- data.frame(mean = prod_means, sd = prod_sds, 
+      prod_df <- data.frame(mean = prod_means, sd = prod_sds,
                             julaug_temp = unlist(julaug_temp[[i]]))
       julaug_mod <- brms::brm(bf(mean | resp_se(sd, sigma = TRUE) ~ julaug_temp),
-                              data = prod_df, family = gaussian(), 
+                              data = prod_df, family = gaussian(),
                               prior = prior(std_normal(), class = "b"),
                               iter = 2000, warmup = 1000, chains = 3, refresh = 0,
                               backend = "cmdstanr")
@@ -550,7 +747,7 @@ for (i in seq_along(cells_all)) {
           iter <- julaug_iter[i] <- 4000
         }
         julaug_mod <- brm(bf(mean | resp_se(sd, sigma = TRUE) ~ julaug_temp),
-                       data = surv_df, family = gaussian(), 
+                       data = surv_df, family = gaussian(),
                        prior = prior(std_normal(), class = "b"),
                        iter = iter, warmup = 1000, adapt_delta = adapt_delta,
                        chains = 3, refresh = 0,
@@ -561,7 +758,7 @@ for (i in seq_along(cells_all)) {
         }
       }
       julaug_temp_slopes <- as_draws_df(julaug_mod)$b_julaug_temp
-      
+
       plotting_data2$julaug_mean_bayes[i] <- mean(julaug_temp_slopes)
       plotting_data2$julaug_median_bayes[i] <- median(julaug_temp_slopes)
       plotting_data2$julaug_sd_bayes[i] <- sd(julaug_temp_slopes)
@@ -599,11 +796,11 @@ plotting_data2$`p(winter temp)` <- plotting_data2$janfeb_p_bayes/(3 * (janfeb_it
 plotting_data2$`p(summer temp)` <- plotting_data2$julaug_p_bayes/(3 * (julaug_iter - 1000))
 plotting_data2$`p(winter swe)` <- plotting_data2$swe_p_bayes/(3 * (swe_iter - 1000))
 
-plotting_data2$lon <- dggridR::dgSEQNUM_to_GEO(grid6, plotting_data2$cell)$lon_deg
+plotting_data2$lon <- dggridR::dgSEQNUM_to_GEO(grid_large, plotting_data2$cell)$lon_deg
 
 plotting_data2 <- plotting_data2[plotting_data2$lon > -107,]
 
-grid <- dggridR::dgcellstogrid(grid6,plotting_data2$cell,frame=TRUE,wrapcells=TRUE)
+grid <- dggridR::dgcellstogrid(grid_large,plotting_data2$cell,frame=TRUE,wrapcells=TRUE)
 grid_3  <- merge(grid,plotting_data2,by.x="cell")
 
 plotting_fun <- function(grid_data, variable, fill_lim = NULL) {
@@ -627,7 +824,7 @@ for (i in 2:25) {
 grid_data <- grid_3[!is.na(grid_3$`mean slope`), ]
 fl <- max(abs(grid_3$`mean slope`), na.rm = T) + .1
 fill_lim <- c(-fl, fl)
-p <- ggplot() + coord_fixed() + blank_theme + 
+p <- ggplot() + coord_fixed() + blank_theme +
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
   geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = `mean slope`), alpha = 2*abs(grid_data$`p(winter temp)` - 0.5))   +
   geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
@@ -637,7 +834,7 @@ p
 grid_data <- grid_3[!is.na(grid_3$julaug_mean_bayes), ]
 fl <- max(abs(grid_3$julaug_mean_bayes), na.rm = T) + .1
 fill_lim <- c(-fl, fl)
-p <- ggplot() + coord_fixed() + blank_theme + 
+p <- ggplot() + coord_fixed() + blank_theme +
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
   geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = julaug_mean_bayes), alpha = 2*abs(grid_data$`p(summer temp)` - 0.5))   +
   geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
@@ -647,7 +844,7 @@ p + labs(fill="mean slope")
 grid_data <- grid_3[!is.na(grid_3$swe_mean_bayes), ]
 fl <- max(abs(grid_3$swe_mean_bayes), na.rm = T) + .1
 fill_lim <- c(-fl, fl)
-p <- ggplot() +  coord_fixed() + blank_theme + 
+p <- ggplot() +  coord_fixed() + blank_theme +
   geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
   geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = swe_mean_bayes), alpha = 2*abs(grid_data$`p(winter temp)` - 0.5))   +
   geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
@@ -703,13 +900,13 @@ name_labels <- c(
   "skewness (winter temp)", "skewness (winter snow)", "skewness (summer temp)",
   "excess kurtosis (winter temp)", "excess kurtosis (winter snow)", "excess kurtosis (summer temp)")
 
-names(name_labels) <- 
+names(name_labels) <-
   c("skewness_winter_temp", "skewness_winter_snow", "skewness_summer_temp",
     "excess_kurtosis_winter_temp", "excess_kurtosis_winter_snow", "excess_kurtosis_summer_temp")
 
-ggplot(pd3, aes(value)) + geom_density() + 
+ggplot(pd3, aes(value)) + geom_density() +
   facet_wrap("name",
-             labeller = labeller(name = name_labels)) + 
+             labeller = labeller(name = name_labels)) +
   ylab("") +
   xlab("") +
   theme(
@@ -718,29 +915,29 @@ ggplot(pd3, aes(value)) + geom_density() +
 
 
 ##### CAR models #####
-plotting_data2 <- plotting_data2[plotting_data2$cell != dggridR::dgGEO_to_SEQNUM(grid6, -102, 41)$seqnum, ]
+plotting_data2 <- plotting_data2[plotting_data2$cell != dggridR::dgGEO_to_SEQNUM(grid_large, -102, 41)$seqnum, ]
 ##### janfeb #####
 # format data
 car_data <- plotting_data2[!is.na(plotting_data2$`mean slope`), c("cell", "mean slope", "janfeb_median_bayes",
                                                                   "janfeb_sd_bayes", "janfeb_skew_bayes", "janfeb_kurt_bayes")]
 car_data$slope_scaled <- scale(car_data$`mean slope`)
-car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lat_deg
+car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lat_deg
 car_data$lat_scaled <- scale(car_data$lat)
 car_data$cell_id <- paste0("cell_", car_data$cell)
 car_data$known_se <- car_data$janfeb_sd_bayes/sd(car_data$`mean slope`)
 
-car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lon_deg
+car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lon_deg
 car_data <- car_data[!(car_data$lat > 38.7 & car_data$lon < -99.5), ]
 
 # get adjacency matrix
 adjacency_mat <- matrix(data = 0L, nrow = nrow(car_data), ncol = nrow(car_data))
 row.names(adjacency_mat) <- car_data$cell_id
 for (i in 1:(nrow(car_data) - 1)) {
-  coord_i <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[i])
+  coord_i <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[i])
   for (j in (i+1):nrow(car_data)) {
-    coord_j <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[j])
-    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg), 
-                                  c(coord_j$lon_deg, coord_j$lat_deg), 
+    coord_j <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[j])
+    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg),
+                                  c(coord_j$lon_deg, coord_j$lat_deg),
                                   fun = geosphere::distHaversine)
     if(cell_dist < 320000) {
       adjacency_mat[i,j] <- adjacency_mat[j,i] <- 1L
@@ -806,12 +1003,12 @@ ggplot(car_data, aes(janfeb_skew_bayes)) + geom_density() + xlab("skewness") + y
 
 
 car_data$excess_kurtosis <- car_data$janfeb_kurt_bayes - 3
-ggplot(car_data, aes(excess_kurtosis)) + geom_density() + 
+ggplot(car_data, aes(excess_kurtosis)) + geom_density() +
   xlab("excess kurtosis") + ylab("")+
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 escar2_fit <- brm(slope_scaled | resp_se(known_se, sigma = TRUE) ~ car(M, gr = cell_id, type = "icar"),
-                  data = car_data, data2 = list(M = adjacency_mat), backend = 'cmdstanr', iter = 12000, 
+                  data = car_data, data2 = list(M = adjacency_mat), backend = 'cmdstanr', iter = 12000,
                   warmup = 2000, cores = 4)
 summary(escar2_fit)
 npt <- nrow(car_data)
@@ -826,7 +1023,7 @@ for(i in 1:npt) {
   sigma <- as_draws_df(escar2_fit)$sigma
   mu = (M*sigma^2 + LP * se^2)/(sigma^2 + se^2)
   scale = 1/sqrt(1/sigma^2 + 1/se^2)
-  
+
   true_values[ , i] <- rnorm(40000, mu, scale)
 }
 
@@ -836,7 +1033,7 @@ smooth_mean <- data.frame(cell = car_data$cell, smooth_mean = apply(true_values,
 plotting_data3 <- merge(plotting_data2, smooth_prob, by = "cell")
 plotting_data3 <- merge(plotting_data3, smooth_mean, by = "cell")
 
-grid <- dggridR::dgcellstogrid(grid6,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
+grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
 grid_3  <- merge(grid,plotting_data3,by.x="cell")
 
 grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
@@ -860,23 +1057,23 @@ p
 car_data <- plotting_data2[!is.na(plotting_data2$julaug_mean_bayes), c("cell", "julaug_mean_bayes", "julaug_median_bayes",
                                                                   "julaug_sd_bayes", "julaug_skew_bayes", "julaug_kurt_bayes")]
 car_data$slope_scaled <- scale(car_data$julaug_mean_bayes)
-car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lat_deg
+car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lat_deg
 car_data$lat_scaled <- scale(car_data$lat)
 car_data$cell_id <- paste0("cell_", car_data$cell)
 car_data$known_se <- car_data$julaug_sd_bayes/sd(car_data$julaug_mean_bayes)
 
-car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lon_deg
+car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lon_deg
 car_data <- car_data[!(car_data$lat > 38.7 & car_data$lon < -99.5), ]
 
 # get adjacency matrix
 adjacency_mat <- matrix(data = 0L, nrow = nrow(car_data), ncol = nrow(car_data))
 row.names(adjacency_mat) <- car_data$cell_id
 for (i in 1:(nrow(car_data) - 1)) {
-  coord_i <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[i])
+  coord_i <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[i])
   for (j in (i+1):nrow(car_data)) {
-    coord_j <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[j])
-    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg), 
-                                  c(coord_j$lon_deg, coord_j$lat_deg), 
+    coord_j <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[j])
+    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg),
+                                  c(coord_j$lon_deg, coord_j$lat_deg),
                                   fun = geosphere::distHaversine)
     if(cell_dist < 320000) {
       adjacency_mat[i,j] <- adjacency_mat[j,i] <- 1L
@@ -885,13 +1082,13 @@ for (i in 1:(nrow(car_data) - 1)) {
 }
 
 
-ggplot(car_data, aes(julaug_skew_bayes)) + geom_density() + 
+ggplot(car_data, aes(julaug_skew_bayes)) + geom_density() +
   xlim(c(-.5, .5)) + xlab("skewness") + ylab("") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 
 car_data$excess_kurtosis <- car_data$julaug_kurt_bayes - 3
-ggplot(car_data, aes(excess_kurtosis)) + geom_density() + 
+ggplot(car_data, aes(excess_kurtosis)) + geom_density() +
   xlim(c(-2, 2)) + xlab("excess kurtosis") + ylab("")+
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
@@ -911,7 +1108,7 @@ for(i in 1:npt) {
   sigma <- as_draws_df(escar2_fit)$sigma
   mu = (M*sigma^2 + LP * se^2)/(sigma^2 + se^2)
   scale = 1/sqrt(1/sigma^2 + 1/se^2)
-  
+
   true_values[ , i] <- rnorm(40000, mu, scale)
 }
 
@@ -921,7 +1118,7 @@ smooth_mean <- data.frame(cell = car_data$cell, smooth_mean = apply(true_values,
 plotting_data3 <- merge(plotting_data2, smooth_prob, by = "cell")
 plotting_data3 <- merge(plotting_data3, smooth_mean, by = "cell")
 
-grid <- dggridR::dgcellstogrid(grid6,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
+grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
 grid_3  <- merge(grid,plotting_data3,by.x="cell")
 
 grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
@@ -949,23 +1146,23 @@ car_data <- plotting_data2[!is.na(plotting_data2$swe_mean_bayes), c("cell", "swe
                                                                        "swe_sd_bayes", "swe_skew_bayes", "swe_kurt_bayes")]
 car_data <- car_data[car_data$swe_mean_bayes < 1 & car_data$swe_mean_bayes > -1, ]
 car_data$slope_scaled <- scale(car_data$swe_mean_bayes)
-car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lat_deg
+car_data$lat <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lat_deg
 car_data$lat_scaled <- scale(car_data$lat)
 car_data$cell_id <- paste0("cell_", car_data$cell)
 car_data$known_se <- car_data$swe_sd_bayes/sd(car_data$swe_mean_bayes)
 
-car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell)$lon_deg
+car_data$lon <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell)$lon_deg
 car_data <- car_data[!(car_data$lat > 38.7 & car_data$lon < -99.5), ]
 
 # get adjacency matrix
 adjacency_mat <- matrix(data = 0L, nrow = nrow(car_data), ncol = nrow(car_data))
 row.names(adjacency_mat) <- car_data$cell_id
 for (i in 1:(nrow(car_data) - 1)) {
-  coord_i <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[i])
+  coord_i <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[i])
   for (j in (i+1):nrow(car_data)) {
-    coord_j <- dggridR::dgSEQNUM_to_GEO(grid6, car_data$cell[j])
-    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg), 
-                                  c(coord_j$lon_deg, coord_j$lat_deg), 
+    coord_j <- dggridR::dgSEQNUM_to_GEO(grid_large, car_data$cell[j])
+    cell_dist <- geosphere::distm(c(coord_i$lon_deg, coord_i$lat_deg),
+                                  c(coord_j$lon_deg, coord_j$lat_deg),
                                   fun = geosphere::distHaversine)
     if(cell_dist < 320000) {
       adjacency_mat[i,j] <- adjacency_mat[j,i] <- 1L
@@ -974,18 +1171,18 @@ for (i in 1:(nrow(car_data) - 1)) {
 }
 
 
-ggplot(car_data, aes(swe_skew_bayes)) + geom_density() + 
+ggplot(car_data, aes(swe_skew_bayes)) + geom_density() +
   xlab("skewness") + ylab("") +
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 
 car_data$excess_kurtosis <- car_data$swe_kurt_bayes - 3
-ggplot(car_data, aes(excess_kurtosis)) + geom_density() + 
+ggplot(car_data, aes(excess_kurtosis)) + geom_density() +
    xlab("excess kurtosis") + ylab("")+
   theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
 
 escar2_fit <- brm(slope_scaled | resp_se(known_se, sigma = TRUE) ~ car(M, gr = cell_id, type = "icar"),
-                  data = car_data, data2 = list(M = adjacency_mat), iter = 12000, 
+                  data = car_data, data2 = list(M = adjacency_mat), iter = 12000,
                   warmup = 2000, backend = 'cmdstanr', cores = 4)
 summary(escar2_fit)
 
@@ -1000,7 +1197,7 @@ for(i in 1:npt) {
   sigma <- as_draws_df(escar2_fit)$sigma
   mu = (M*sigma^2 + LP * se^2)/(sigma^2 + se^2)
   scale = 1/sqrt(1/sigma^2 + 1/se^2)
-  
+
   true_values[ , i] <- rnorm(40000, mu, scale)
 }
 
@@ -1010,7 +1207,7 @@ smooth_mean <- data.frame(cell = car_data$cell, smooth_mean = apply(true_values,
 plotting_data3 <- merge(plotting_data2, smooth_prob, by = "cell")
 plotting_data3 <- merge(plotting_data3, smooth_mean, by = "cell")
 
-grid <- dggridR::dgcellstogrid(grid6,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
+grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
 grid_3  <- merge(grid,plotting_data3,by.x="cell")
 
 grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
@@ -1043,16 +1240,16 @@ for(i in seq_along(cells_all)){
       surv_rats <- lrats_avg[2*c(1:13)]
       average_indices$prod_mean[i] <- mean(prod_rats, na.rm = T)
       average_indices$surv_mean[i] <- mean(surv_rats, na.rm = T)
-      
+
     }
   }
 }
 
 average_indices2 <- average_indices[(!is.na(average_indices$prod_mean)) | (!is.na(average_indices$surv_mean)), ]
 
-grid6 <- dggridR::dgconstruct(res = 6)
+grid_large <- dggridR::dgconstruct(res = 6)
 
-grid_x <- dggridR::dgcellstogrid(grid6,average_indices2$cell,frame=TRUE,wrapcells=TRUE)
+grid_x <- dggridR::dgcellstogrid(grid_large,average_indices2$cell,frame=TRUE,wrapcells=TRUE)
 grid_x  <- merge(grid_x,average_indices2,by.x="cell")
 
 

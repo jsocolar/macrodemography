@@ -129,7 +129,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
         }
       }
       
-      for (i in 1:13) {
+      for (i in 1:length(idx_surv)) {
         p_i <- 1 + 2*i
         s_i <- 2*i
         
@@ -156,11 +156,11 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
       use <- rep(FALSE, length(ratio_series$median))
     }
     
-    if(sum(use[1+2*c(0:13)]) < n_min_prod) {
+    if(sum(use[idx_prod]) < n_min_prod) {
       use <- rep(FALSE, length(ratio_series$median))
-    } else if(sum(use[2*c(1:13)]) < n_min_surv) {
+    } else if(sum(use[idx_surv]) < n_min_surv) {
       use <- rep(FALSE, length(ratio_series$median))
-    } else if ((sum(use[1 + 2*c(1:13)] * use[2*c(1:13)])) < n_min_full) {
+    } else if ((sum(use[idx_prod] * use[idx_surv])) < n_min_full) {
       use <- rep(FALSE, length(ratio_series$median))
     }
     

@@ -17,3 +17,6 @@ a list of data.frames for each year calculated by \link\link{abun_data_bycell}.
 \description{
 Abundance summary across years
 }
+\details{
+Each list element for this function contains a data.frame for a year, provided by \link{abun_data}
+}

@@ -17,7 +17,8 @@ get_grid_data(
   large_grid = 6,
   small_grid = 11,
   time_grid = 7,
-  .cores = 4
+  .cores = 4,
+  roi
 )
 }
 \arguments{
@@ -46,6 +47,8 @@ get_grid_data(
 \item{time_grid}{the temporal grid size in days (default 7, one week).}
 
 \item{.cores}{number of parallel cores for \code{get_cell_data()} calls}
+
+\item{roi}{region of interest}
 }
 \description{
 Get eBird summaries on cells of a small grid, tagged with membership in a large grid.

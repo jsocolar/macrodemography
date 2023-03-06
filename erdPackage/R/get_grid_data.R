@@ -12,18 +12,20 @@
 #' @param small_grid the dggridR resolution of the small grid
 #' @param time_grid the temporal grid size in days (default 7, one week).
 #' @param .cores number of parallel cores for `get_cell_data()` calls
+#' @param roi region of interest
 #' @export
 get_grid_data <- function(data, .year,
                      tgrid_min, tgrid_max, time_window = "gridded",
                      min_lat, max_lat, min_lon, max_lon = Inf,
                      large_grid = 6, small_grid = 11, time_grid = 7,
+                     roi,
                      .cores = 4) {
   cell_data <- list()
   
   zfd <- data
   zfd <- zfd[year == .year]
   zfd <- zfd[latitude > min_lat & latitude < max_lat & longitude > min_lon & longitude < max_lon]
-  zfd <- merge(zfd, get_tgrid(time_grid), by = "day_of_year", all = F)
+  zfd <- merge(zfd, get_tgrid(time_grid), by = "day_of_year", all = FALSE)
   zfd <- zfd[tgrid >= tgrid_min & tgrid <= tgrid_max]
   
   if (time_window == "full") {
@@ -32,12 +34,9 @@ get_grid_data <- function(data, .year,
   
   dg_large <- dggridR::dgconstruct(res=large_grid)
   dg_small <- dggridR::dgconstruct(res=small_grid)
-  
-  zfd$cells_large <- dggridR::dgGEO_to_SEQNUM(dg_large, zfd$longitude, zfd$latitude)$seqnum
-  zfd$cells_small <- dggridR::dgGEO_to_SEQNUM(dg_small, zfd$longitude, zfd$latitude)$seqnum
 
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi = roi)
-  all_cells_small <- pixels$roi_small$cell[pixels$roi_small$cell_large %in% zfd$cells_large]
+  all_cells_small <- pixels$roi_small$cell[pixels$roi_small$cell_large %in% zfd$seqnum_large]
   
   if (time_window == "gridded") {
     cl <- parallel::makeCluster(.cores, "FORK")
@@ -89,12 +88,7 @@ get_tgrid <- function(days=7) {
 #' @param roi an sf multipolygon object defining the Region Of Interest (ROI)
 get_pixels <- function(dg_large, dg_small, roi) {
   # QUESTION: this rater definition is US-specific, how to generalize?
-  # QUESTION: differs from extent defined earlier: extent=c(min_lon=-128, max_lon=-60, min_lat=23, max_lat=50), is this necessary?
-  roi_raster <- fasterize::fasterize(roi,
-                                       raster::raster(ncol=1000, nrow = 1000, 
-                                                      xmn = -125, xmx = -66, 
-                                                      ymn =24, ymx = 50))
-  roi_coords <- raster::as.data.frame(roi_raster, xy = T)
+  roi_coords <- raster::as.data.frame(roi, xy = T)
   roi_coords <- roi_coords[!is.na(roi_coords$layer), ]
   roi_cells <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_large, roi_coords$x, roi_coords$y)[[1]]))
   roi_cells$lat <- dggridR::dgSEQNUM_to_GEO(dg_large, roi_cells$cell)$lat_deg
@@ -138,7 +132,7 @@ get_cell_data <- function(zfd, t, all_cells_small) {
   zfd_t <- zfd[zfd$tgrid == t, ]
   for (g in seq_along(all_cells_small)) {
     cd <- list()
-    obs <- zfd_t[zfd_t$cells_small == all_cells_small[g], ]
+    obs <- zfd_t[zfd_t$seqnum_small == all_cells_small[g], ]
     cd$n <- nrow(obs)
     cd$n_z <- sum(obs$obs_count == "0" & obs$only_presence_reported == 0)
     cd$n_x <- sum(obs$only_presence_reported)

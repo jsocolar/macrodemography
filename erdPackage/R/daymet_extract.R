@@ -1,6 +1,5 @@
 #' extract Daymet summaries over a spatiotemporal cell of interest
-#' @import rgee # so that we don't have to do a whole string of importFrom for
-#'   all the R6 stuff.
+#' @import rgee 
 #' @param cell the cell id from a dggrid
 #' @param res the resolution of the dggrid
 #' @param variable the name of the daymet variable

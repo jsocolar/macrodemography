@@ -27,7 +27,7 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
 #' @inheritParams abun_data_bycell
 #' @return a list of data.frames for each year calculated by \link[abun_data_bycell].
 #' @export
-#' Each list element for this function contains a data.frame for a year, provided by [abun_data]
+#' @details Each list element for this function contains a data.frame for a year, provided by [abun_data]
 get_abun_summary <- function(abun_data, n_small_min) {
   lapply(abun_data, abun_data_bycell, n_small_min = n_small_min)
 }

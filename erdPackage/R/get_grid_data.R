@@ -54,7 +54,7 @@ get_grid_data <- function(data, .year,
   zfd$cells_small <- dggridR::dgGEO_to_SEQNUM(dg_small, zfd$longitude, zfd$latitude)$seqnum
 
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi = roi)
-  all_cells_small <- pixels$roi_small$cell[pixels$roi_small$cell_large %in% zfd$seqnum_large]
+  all_cells_small <- pixels$cells_small$cell[pixels$cells_small$cell_large %in% zfd$seqnum_large]
   
   if (time_window == "gridded") {
     cl <- parallel::makeCluster(.cores, "FORK")
@@ -82,6 +82,8 @@ get_grid_data <- function(data, .year,
   attr(cell_data, "max_lat") <- max_lat
   attr(cell_data, "min_lon") <- min_lon
   attr(cell_data, "max_lon") <- max_lon
+  attr(cell_data, "cells_large") <- pixels$cells_large
+  attr(cell_data, "cells_small") <- pixels$cells_small
   
   return(cell_data)
 }
@@ -116,7 +118,7 @@ get_pixels <- function(dg_large, dg_small, roi) {
   roi_cells_small$lon <- dggridR::dgSEQNUM_to_GEO(dg_small, roi_cells_small$cell)$lon_deg
   roi_cells_small$cell_large <- dggridR::dgGEO_to_SEQNUM(dg_large, roi_cells_small$lon, roi_cells_small$lat)[[1]]
   
-  out <- list(roi_large = roi_cells, roi_small = roi_cells_small)
+  out <- list(cells_large = roi_cells, cells_small = roi_cells_small)
   return(out)
 }
 

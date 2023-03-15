@@ -1,11 +1,12 @@
 #' Get abundance data
 #' @inheritParams get_abun_tgrid_slice
+#' @inheritParams get_pixels
 #' @return a dataframe
 #' @export
-get_abun <- function(sp_data, n_rep, roi, .cores = 4){
+get_abun <- function(sp_data, n_rep, .cores = 4){
   dg_large <- dggridR::dgconstruct(res=attributes(sp_data)$large_grid)
   dg_small <- dggridR::dgconstruct(res=attributes(sp_data)$small_grid)
-  cells <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi)$roi_small
+  cells <- attributes(sp_data)$cells_small
   cells <- cells[cells$lat > attributes(sp_data)$min_lat & 
                    cells$lat < attributes(sp_data)$max_lat &
                    cells$lon > attributes(sp_data)$min_lon, ]

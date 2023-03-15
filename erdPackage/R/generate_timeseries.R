@@ -27,7 +27,7 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
 #' @inheritParams abun_data_bycell
 #' @return a list of data.frames for each year calculated by \link[abun_data_bycell].
 #' @export
-#' Each list element for this function contains a data.frame for a year, provided by [abun_data]
+#' @details Each list element for this function contains a data.frame for a year, provided by [abun_data]
 get_abun_summary <- function(abun_data, n_small_min) {
   lapply(abun_data, abun_data_bycell, n_small_min = n_small_min)
 }
@@ -89,12 +89,13 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
   if(!identical(ratio_series, NA)){
     if(any(is.infinite(ratio_series$median))) {
       contains_inf <- TRUE
+      # set infinite values to NA
       for(i in 1:length(ratio_series)){
         ratio_series[[i]][is.infinite(ratio_series[[i]])] <- NA
       }
     } else {contains_inf <- FALSE}
     
-    insufficient_return <- as.logical(rep(0, length(ratio_series$median))) 
+    insufficient_return <- rep(FALSE, length(ratio_series$median))
     if(inf_exclude & contains_inf) {
       return(insufficient_return)
     }
@@ -146,6 +147,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
           use[s_i] <- 0
         } else {
           uncertainty <- ratio_series$q90[s_i] - ratio_series$q10[s_i]
+          #QUESTION: is this type of thresholding still in use?
           if(uncertainty > (uncertainty_high_grade * surv_dif)) {
             use[s_i] <- 0
           }

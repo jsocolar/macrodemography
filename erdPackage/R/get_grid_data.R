@@ -82,9 +82,7 @@ get_grid_data <- function(data, .year,
   attr(cell_data, "max_lat") <- max_lat
   attr(cell_data, "min_lon") <- min_lon
   attr(cell_data, "max_lon") <- max_lon
-  attr(cell_data, "cells_large") <- pixels$cells_large
-  attr(cell_data, "cells_small") <- pixels$cells_small
-  
+
   return(cell_data)
 }
 
@@ -105,7 +103,7 @@ get_tgrid <- function(days=7) {
 #' get a hexagonal grid over the contiguous US
 #' @param dg_large large dggridR grid
 #' @param dg_small small dggridR grid
-#' @param roi an sf multipolygon object defining the Region Of Interest (ROI)
+#' @param roi a raster object defining the Region Of Interest (ROI)
 get_pixels <- function(dg_large, dg_small, roi) {
   roi_coords <- raster::as.data.frame(roi, xy = T)
   roi_coords <- roi_coords[!is.na(roi_coords$layer), ]

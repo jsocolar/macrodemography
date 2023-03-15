@@ -11,8 +11,25 @@
 #' @param large_grid the dggridR resolution of the large grid
 #' @param small_grid the dggridR resolution of the small grid
 #' @param time_grid the temporal grid size in days (default 7, one week).
-#' @param .cores number of parallel cores for `get_cell_data()` calls
+#' @param .cores number of parallel cores for [get_cell_data()] calls
 #' @export
+#' @return a list with grid-sampled data
+#' @details 
+#' The returned list object either contains a single list of lists (when time_window equals full)
+#' or a multiple lists of lists (when time_window equals weekly), one for each week. The deepest
+#' list elements contains count information for the small grid, with list elements labled as 
+#' `cell_XXXXXX` with `XXXXXX` the small cell index. These small cell data elements contain the following
+#' list elements returned by [get_cell_data()]:
+#' \describe{
+#' \item{`n`}{number of observations (number of zero-filled checklist available in the small cell)}
+#' \item{`n_z`}{number of zero counts}
+#' \item{`n_x`}{number of presence only observations (X's)}
+#' \item{`n_value`}{number of observations with a count value (zero or a count, i.e. non-X observations)}
+#' \item{`mean_positive`}{average count of observations with a count > 0}
+#' \item{`stixel_mean_small`}{average count for the small cell, as calculated with [stixel_mean_small()]}
+#' }
+#' The average count calculated with [stixel_mean_small()] currently assumes for presence only observations
+#' (X's) a count equal to `mean_positive`.
 get_grid_data <- function(data, .year,
                      tgrid_min, tgrid_max, time_window = "gridded",
                      min_lat, max_lat, min_lon, max_lon = Inf,
@@ -122,6 +139,8 @@ stixel_mean_small <- function(x){
 #    return(weighted.mean(x = c(0,2), w = c(x$n_z, x$n_x)))
     return(NA)
   } else {
+    # Rescale the numbers of zeros by the proportion non-X non-zero observations
+    # This has the effect of assuming the mean positive value for the presence only (X) observations
     n_z_rescaled <- x$n_z * x$n_value / (x$n_value + x$n_x)
     return(weighted.mean(x = c(0, x$mean_positive), w = c(n_z_rescaled, x$n_value)))
   }

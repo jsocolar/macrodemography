@@ -1,5 +1,8 @@
 #' Compute median passage dates for a species
 #' @param sp_data species data returned from import_from_erd
+#' @param season the season
+#' @param min_day minimum day of year
+#' @param max_day maximum day of year
 #' @param lat1 southern boundary of ROI
 #' @param lat2 northern boundary of ROI
 #' @param bandwidth width of latitudinal bands to get median, in degrees

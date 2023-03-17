@@ -11,7 +11,8 @@
 #' @param large_grid the dggridR resolution of the large grid
 #' @param small_grid the dggridR resolution of the small grid
 #' @param time_grid the temporal grid size in days (default 7, one week).
-#' @param .cores number of parallel cores for [get_cell_data()] calls
+#' @param .cores number of parallel cores for `get_cell_data()` calls
+#' @param roi region of interest
 #' @export
 #' @return a list with grid-sampled data
 #' @details 
@@ -49,9 +50,6 @@ get_grid_data <- function(data, .year,
   
   dg_large <- dggridR::dgconstruct(res=large_grid)
   dg_small <- dggridR::dgconstruct(res=small_grid)
-  
-  zfd$cells_large <- dggridR::dgGEO_to_SEQNUM(dg_large, zfd$longitude, zfd$latitude)$seqnum
-  zfd$cells_small <- dggridR::dgGEO_to_SEQNUM(dg_small, zfd$longitude, zfd$latitude)$seqnum
 
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi = roi)
   all_cells_small <- pixels$cells_small$cell[pixels$cells_small$cell_large %in% zfd$seqnum_large]

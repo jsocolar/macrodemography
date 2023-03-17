@@ -1,6 +1,7 @@
 #' Get abundance data
 #' @inheritParams get_abun_tgrid_slice
 #' @inheritParams get_pixels
+#' @param .cores number of parallel cores to use
 #' @return a dataframe
 #' @export
 get_abun <- function(sp_data, n_rep, roi, .cores = 4){

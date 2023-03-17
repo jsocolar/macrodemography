@@ -4,7 +4,10 @@
 \alias{get_tgrid}
 \title{get a 7-day grid over ordinal days}
 \usage{
-get_tgrid()
+get_tgrid(days = 7)
+}
+\arguments{
+\item{days}{time grid resolution in days}
 }
 \value{
 a two-column data-frame that tags each day-of-year to a tgrid cell

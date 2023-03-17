@@ -17,8 +17,8 @@ get_grid_data(
   large_grid = 6,
   small_grid = 11,
   time_grid = 7,
-  .cores = 4,
-  roi
+  roi,
+  .cores = 4
 )
 }
 \arguments{
@@ -46,10 +46,30 @@ get_grid_data(
 
 \item{time_grid}{the temporal grid size in days (default 7, one week).}
 
-\item{.cores}{number of parallel cores for \code{get_cell_data()} calls}
-
 \item{roi}{region of interest}
+
+\item{.cores}{number of parallel cores for \code{get_cell_data()} calls}
+}
+\value{
+a list with grid-sampled data
 }
 \description{
 Get eBird summaries on cells of a small grid, tagged with membership in a large grid.
+}
+\details{
+The returned list object either contains a single list of lists (when time_window equals full)
+or a multiple lists of lists (when time_window equals weekly), one for each week. The deepest
+list elements contains count information for the small grid, with list elements labled as
+\code{cell_X} with \code{X} the small cell index. These small cell data elements contain the following
+list elements returned by \code{\link[=get_cell_data]{get_cell_data()}}:
+\describe{
+\item{\code{n}}{number of observations (number of zero-filled checklist available in the small cell)}
+\item{\code{n_z}}{number of zero counts}
+\item{\code{n_x}}{number of presence only observations (X's)}
+\item{\code{n_value}}{number of observations with a count value (zero or a count, i.e. non-X observations)}
+\item{\code{mean_positive}}{average count of observations with a count > 0}
+\item{\code{stixel_mean_small}}{average count for the small cell, as calculated with \code{\link[=stixel_mean_small]{stixel_mean_small()}}}
+}
+The average count calculated with \code{\link[=stixel_mean_small]{stixel_mean_small()}} currently assumes for presence only observations
+(X's) a count equal to \code{mean_positive}.
 }

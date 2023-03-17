@@ -4,12 +4,14 @@
 \alias{get_abun}
 \title{Get abundance data}
 \usage{
-get_abun(sp_data, n_rep, .cores = 4)
+get_abun(sp_data, n_rep, roi, .cores = 4)
 }
 \arguments{
 \item{sp_data}{Data for a particular species and year from get_grid_data()}
 
 \item{n_rep}{number of bootstrap replicates}
+
+\item{roi}{a raster object defining the Region Of Interest (ROI)}
 }
 \value{
 a dataframe

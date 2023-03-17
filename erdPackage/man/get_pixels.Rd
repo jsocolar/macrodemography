@@ -11,7 +11,7 @@ get_pixels(dg_large, dg_small, roi)
 
 \item{dg_small}{small dggridR grid}
 
-\item{roi}{an sf multipolygon object defining the Region Of Interest (ROI)}
+\item{roi}{a raster object defining the Region Of Interest (ROI)}
 }
 \description{
 get a hexagonal grid over the contiguous US

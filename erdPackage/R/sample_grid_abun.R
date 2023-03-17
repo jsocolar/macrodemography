@@ -2,7 +2,7 @@
 #' @param data abundance index data
 #' @param cells_all cells to compute
 #' @param period period to compute
-#' @param export
+#' @export
 get_ratios <- function(data, cells_all, period=c("spring", "fall")){
   # verify we have all periods (spring and fall) available
   assert_that(all(period %in% names(data)))

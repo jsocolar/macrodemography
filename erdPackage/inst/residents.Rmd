@@ -96,9 +96,9 @@ western_states <- c("arizona", "california", "colorado", "idaho", "montana",
                     "wyoming")
 
 if(params$region == "eastern_us"){
-  region_of_interest <- spData::us_states %>% filter(!(tolower(NAME) %in% western_states_caps))
+  region_of_interest <- spData::us_states %>% filter(!(tolower(NAME) %in% western_states))
 } else if(params$region == "western_us") {
-  region_of_interest <- spData::us_states %>% filter(toupper(NAME) %in% western_states_caps)
+  region_of_interest <- spData::us_states %>% filter(toupper(NAME) %in% western_states)
 } else if(params$region == "conus") {  
   region_of_interest <- spData::us_states
 } else if(params$region == "north_america") {

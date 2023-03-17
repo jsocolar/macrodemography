@@ -11,11 +11,16 @@ get_cell_timeseries(cells_all, spring_abun_summary, fall_abun_summary)
 
 \item{spring_abun_summary}{spring abundance summary}
 
-\item{fall_abun_summary}{fall_abundance_summary}
+\item{fall_abun_summary}{fall abundance summary}
 }
 \value{
-dataframe
+a list of data.frames, with list elements corresponding to cells
 }
 \description{
 Merge spring and fall indices into a timeseries
+}
+\details{
+This functions pastes the spring and full abundance summaries together
+in one data.frame for each cell, with the spring on the uneven column indices and fall on the
+even column indices, with in total 2x (number of years) columns
 }

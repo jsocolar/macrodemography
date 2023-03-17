@@ -8,8 +8,9 @@ Description: Summarize ERD in nice ways.
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Depends:
-   data.table,
-   doParallel
+    data.table,
+    doParallel,
+    R (>= 2.10)
 Imports:
    raster,
    dggridR,
@@ -22,4 +23,5 @@ Imports:
    stocks
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.1
+RoxygenNote: 7.2.3
+LazyData: true

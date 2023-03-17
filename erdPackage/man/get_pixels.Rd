@@ -4,12 +4,14 @@
 \alias{get_pixels}
 \title{get a hexagonal grid over the contiguous US}
 \usage{
-get_pixels(dg_large, dg_small)
+get_pixels(dg_large, dg_small, roi)
 }
 \arguments{
 \item{dg_large}{large dggridR grid}
 
 \item{dg_small}{small dggridR grid}
+
+\item{roi}{an sf multipolygon object defining the Region Of Interest (ROI)}
 }
 \description{
 get a hexagonal grid over the contiguous US

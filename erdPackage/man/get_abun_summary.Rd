@@ -12,8 +12,11 @@ get_abun_summary(abun_data, n_small_min)
 \item{n_small_min}{minimum number of small cells to compute abundance index for large cell}
 }
 \value{
-something
+a list of data.frames for each year calculated by \link\link{abun_data_bycell}.
 }
 \description{
 Abundance summary across years
+}
+\details{
+Each list element for this function contains a data.frame for a year, provided by \link{abun_data}
 }

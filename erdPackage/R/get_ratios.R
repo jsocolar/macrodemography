@@ -2,6 +2,7 @@
 #' @param data abundance index data
 #' @param cells_all cells to compute
 #' @param period period to compute
+#' @param n_small_min minimum number of small cells required to calculate an abundance ratio for a large cell
 #' @export
 get_ratios <- function(data, cells_all, period=c("spring", "fall"), n_small_min=10){
   # verify we have all periods (spring and fall) available

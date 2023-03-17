@@ -14,6 +14,8 @@ get_ratios(data, cells_all, period = c("spring", "fall"))
 \item{cells_all}{cells to compute}
 
 \item{period}{period to compute}
+
+\item{n_small_min}{minimum number of small cells required to calculate an abundance ratio for a large cell}
 }
 \description{
 Get log-ratios

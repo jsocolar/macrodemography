@@ -1,11 +1,13 @@
 ---
 title: "Macrodemography analyses"
-author: "Jacob Socolar"
+author:
+ - Jacob Socolar
+ - Adriaan Dokter
 date: "`r Sys.Date()`"
 output: html_document
 params:
-  erd_path: "/Users/Jacob/Dropbox/Work/macrodemography/erd"
-  output_path: "/Users/Jacob/Dropbox/Work/macrodemography/residents"
+  erd_path: "~/Dropbox/macrodemography/erd/"
+  output_path: "~/Dropbox/macrodemography_refactor/data/residents"
   years: !r c(2006:2019)
   extent_space: !r
     data.frame(
@@ -38,7 +40,7 @@ params:
   hexagon_area_large: 70000 # desired approx. area of large cells (sq km)
   hexagon_area_small: 300 # desired approx. area of small cells
   n_small_min: 10 # minimum number of small cells to compute abundance index for large cell
-  species_to_process: !r c("carwre","norcar")
+  species_to_process: !r c("carwre")
   always_import_checklists: FALSE
   always_filter_checklists: FALSE
   always_resample_bootstrap: FALSE
@@ -92,55 +94,26 @@ blank_theme <-
 western_states <- c("arizona", "california", "colorado", "idaho", "montana",
                     "nevada", "new mexico", "oregon", "utah", "washington",
                     "wyoming")
-western_states_caps <- toupper(western_states)
 
 if(params$region == "eastern_us"){
-  states <- map_data("state") %>% filter(!(region %in% western_states))
-  roi_raster <- 
-    fasterize::fasterize(
-      spData::us_states %>%
-        filter(
-          !(toupper(NAME) %in% western_states_caps)
-        ),
-      raster::raster(
-        ncol=1000, nrow = 1000, xmn = -125, xmx = -66, ymn =24, ymx = 50
-      )
-    )
+  region_of_interest <- spData::us_states %>% filter(!(tolower(NAME) %in% western_states_caps))
 } else if(params$region == "western_us") {
-  states <- map_data("state") %>% filter(region %in% western_states)
-  roi_raster <- 
-    fasterize::fasterize(
-      spData::us_states %>%
-        filter(
-          toupper(NAME) %in% western_states_caps
-        ),
-      raster::raster(
-        ncol=1000, nrow = 1000, xmn = -125, xmx = -66, ymn =24, ymx = 50
-      )
-    )
-} else if(params$region == "conus") {
-  states <- map_data("state")
-  roi_raster <- 
-    fasterize::fasterize(
-      spData::us_states,
-      raster::raster(
-        ncol=1000, nrow = 1000, xmn = -125, xmx = -66, ymn =24, ymx = 50
-      )
-    )
-} else {
-  states <- map_data("state") %>% filter(region %in% params$region)
-    roi_raster <- 
-    fasterize::fasterize(
-      spData::us_states %>%
-        filter(
-          toupper(NAME) %in% toupper(params$region)
-        ),
-      raster::raster(
-        ncol=1000, nrow = 1000, xmn = -125, xmx = -66, ymn =24, ymx = 50
-      )
-    )
+  region_of_interest <- spData::us_states %>% filter(toupper(NAME) %in% western_states_caps)
+} else if(params$region == "conus") {  
+  region_of_interest <- spData::us_states
+} else if(params$region == "north_america") {
+  region_of_interest <- ne_states(country =  c("United States of America","Canada"), returnclass = "sf") %>%
+  filter(region != "Northern Canada") %>% 
+  filter(!name %in% c("Hawaii", "Alaska"))
+} else{
+  region_of_interest <- spData::us_states %>% filter(tolower(NAME) %in% params$region)
 }
-
+# NOTE: this adds additional cropping of the region of interest
+# adjust if necessary
+raster_of_interest <- fasterize::fasterize(region_of_interest,
+                                   raster::raster(ncol=1000, nrow = 1000, 
+                                                  xmn = -125, xmx = -66, 
+                                                  ymn =24, ymx = 50))
 ```
 
 
@@ -227,7 +200,7 @@ for(species_code in params$species_to_process){
         species_code, params$erd_path, checklists, params$effort_thresholds, 
         params$extent_space, extent_time, time_window="full", 
         small_grid=grid_small$res, large_grid=grid_large$res, time_grid=7, 
-        roi = roi_raster
+        roi = raster_of_interest
       )
     if(!dir.exists(dirname(file_out))) dir.create(dirname(file_out), recursive = TRUE)
     saveRDS(data, file_out)
@@ -236,3 +209,170 @@ for(species_code in params$species_to_process){
 
 ```
 
+```{r ratio-functions}
+
+# function to reformat the output of get_ratios() into tidy format
+make_ratios_tidy <- function(cell_ratios){
+  ############################
+  # tidy up replicate data 
+  ############################
+  tidy_rep <- function(data_rep){
+    assert_that(is.list(data_rep))
+    # function expects a list of length one (in order to keep the list element name available)
+    assert_that(length(data_rep)==1)
+    output <- as_tibble(data_rep[[1]])
+    replicate_cols <- colnames(output)
+    output$cell=names(data_rep)[1]
+    output$year <- as.numeric(substr(rownames(data_rep[[1]]),1,4))
+    output$period <- substr(rownames(data_rep[[1]]),6,10^6)
+    output <- tidyr::pivot_longer(output,replicate_cols,names_to = "replicate")
+    output$replicate <- as.numeric(gsub("rep_","",output$replicate))
+    output
+  }
+  data_rep <- cell_ratios$replicates[!is.na(cell_ratios$replicates)]
+  output_rep <- do.call(rbind,lapply(seq_along(data_rep), function(i) tidy_rep(data_rep[i])))
+  ############################
+  # tidy up summary data 
+  ############################ 
+  # convert lists to tibble dataframe
+  output_sum <- do.call(rbind,lapply(cell_ratios$summary[!is.na(cell_ratios$summary)], as_tibble))
+  
+  # add information on whether there are Inf values in a given cell time series
+  output_sum <- left_join(output_sum, output_sum %>% 
+    group_by(cell) %>%
+    summarise(has_inf=sum(is.infinite(avg))>0), by="cell")
+  
+  # add information on number of productivity, survival and total indices per year
+  # replace Inf values with NA
+  
+  period1=unique(output_sum$period)[1]
+  period2=unique(output_sum$period)[2]
+  
+  left_join(output_sum, output_sum %>%
+              mutate(across(everything(), ~ replace(., is.infinite(.),NA))) %>% # change infinite values to NA
+              group_by(cell) %>%
+              summarise(n_prod=sum(is.finite(avg) & period==period1), # typically evaluates to period=="fall
+                        n_surv=sum(is.finite(avg) & period==period2), # typically evaluates to period=="fall
+                        n=sum(is.finite(avg))),
+            by="cell") -> output_sum
+  
+  # return both as a list:
+  list(summary=output_sum, replicates=output_rep)
+}
+
+plot_ratios <- function(cell_number, data, log=T){
+  if(!log){
+    data$median=exp(data$median)
+    data$q10=exp(data$q10)
+    data$q90=exp(data$q90)
+    ylabel="ratio"
+  } else{
+    ylabel="log-ratio"
+  }
+  data %>% filter(cell==cell_number) %>%
+    group_by(season) %>%
+    ggplot(aes(x=year,y=median, col=season)) + 
+    geom_errorbar(aes(ymin=q10, ymax=q90), width=.1,
+                  position=position_dodge(0.2)) + 
+    geom_point() + 
+    geom_line() + 
+    ggtitle(paste("cell index =",cell_number)) + 
+    ylab(ylabel) 
+}
+
+
+# compare variances between recruitment and mortality
+compare_ratio_variances <- function(cell_index, data, n_ratio_min=5, warmup=1000, iter=2000, chains=3){
+  assert_that(is.data.frame(data))
+  assert_that(all(c("cell","year","period","season","n_prod","n_surv","has_inf","avg") %in% names(data)))
+  assert_that(cell_index %in% unique(data$cell), msg = paste("no records found for cell",cell_index,"in data"))
+  
+  # model formula:
+  mod_formula <- bf(ratio | resp_se(sd, sigma = TRUE) ~ season,
+                    sigma ~ season)
+  # apply data filters:
+  ratio_data <- data %>% 
+    filter(cell==cell_index) %>%
+    filter(n_prod>=n_ratio_min) %>%
+    filter(n_surv>=n_ratio_min) %>%
+    filter(is.finite(avg)) %>%
+    filter(!has_inf) %>%
+    mutate(ratio=avg)
+  
+  # initialize return values
+  p_survival_variance_higher=NA
+  effect_size_log=NA
+  
+  # only fit model if we have sufficient ratios for both recruitment and productivity:
+  if(nrow(ratio_data) >= n_ratio_min & all(count(ratio_data,period)$n>=n_ratio_min)){
+    adapt_delta <- 0.8
+    converged <- FALSE
+    tries <- 0
+    
+    while(!converged & tries < 2){
+      print(paste("starting estimation for cell",cell_index))
+      mod <- brm(mod_formula, data = ratio_data, family = gaussian(),
+                 iter = iter, warmup = warmup, chains = chains, refresh = 0,
+                 backend = "cmdstanr")
+      diagnostics <- check_brmsfit_diagnostics(mod)
+      if(all(diagnostics)) converged = TRUE
+      
+      if (!diagnostics[1]) {
+        adapt_delta <- .99
+      }
+      if (!diagnostics[2]) {
+        iter <- iter*2
+      }
+      
+      tries = tries + 1
+      
+    }
+    if(converged){
+      # sample the posterior distribution:
+      d <- as_draws_df(mod)
+      
+      p_survival_variance_higher <- mean(d$b_sigma_seasonsurv > 0)
+      # p_survival_variance_higher is the probability that the variance in survival
+      # is larger than the variance in productivity
+      
+      effect_size_log <- mean(d$b_sigma_seasonsurv)
+      # effect_size_log calculated as the mean estimated posterior effect
+      # equals the slope (b) for sigma when season equals survival, i.e. the log-scale difference between seasons
+      # equals the mean log(survival) standard deviation - mean log(productivity) standard deviation
+      # effect_size_log is still on the logarithmic scale.
+      
+    } else{
+      print(paste("diagnostic failure for cell", cell_index))
+    }
+  } else{
+    print(paste("insufficient ratios available for cell",cell_index))
+  }
+  
+  return(tibble(cell=cell_index, p_survival_variance_higher=p_survival_variance_higher,effect_size_log=effect_size_log))
+}
+```
+
+# Calculate spring/fall log-ratios 
+
+```{r ratio-analysis}
+##### Declare species #####
+species <- "carwre"  # use consistent 6-letter convention throughout
+
+##### load abundance data #####
+file_species <- list.files(params$output_path, pattern=".rds$", full.names=T) %>% as_tibble %>% filter(grepl(species,value)) %>% pull(value)
+print(paste("loading data from file", file_species,"..."))
+data <- readRDS(file_species)
+
+##### Get demographic indices #####
+cell_ratios <- get_ratios(data$abun, cells_all, n_small_min = n_small_min)
+tidy_ratios <- make_ratios_tidy(cell_ratios)
+  
+# rename fall/spring ratios to productivity/recruitment:
+tidy_ratios$summary %>%
+  mutate(season=ifelse(period=="fall", "prod","surv")) -> tidy_ratios_summary
+
+# Plot the cell ratio series
+cells <- unique(data$abun$spring[[1]]$cell)
+
+
+```

@@ -69,10 +69,6 @@ get_cell_timeseries <- function (cells_all,
   return(cell_timeseries)
 }
 
-
-
-
-
 #' function to determine which cell-years are analyzeable
 #' @param ratio_series a ratio series
 #' @param uncertainty_high_grade maximum allowable uncertainty in cell-year
@@ -93,31 +89,35 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
   if(!identical(ratio_series, NA)){
     if(any(is.infinite(ratio_series$median))) {
       contains_inf <- TRUE
+      # set infinite values to NA
       for(i in 1:length(ratio_series)){
         ratio_series[[i]][is.infinite(ratio_series[[i]])] <- NA
       }
     } else {contains_inf <- FALSE}
     
-    insufficient_return <- as.logical(rep(0, length(ratio_series$median))) 
+    insufficient_return <- rep(FALSE, length(ratio_series$median))
     if(inf_exclude & contains_inf) {
       return(insufficient_return)
     }
     
-    # QUESTION: it seems these indices are conditional on year, i.e. expecting 13 years of data. Needs to be modified to be aware of available years
-    if(sum(!is.na(ratio_series$median[1 + 2*c(0:13)])) < n_min_prod) {
+    idx_prod <- seq(from=1,to=length(ratio_series$median),by=2)
+    idx_surv <- seq(from=2,to=length(ratio_series$median),by=2)
+    
+    if(sum(!is.na(ratio_series$median[idx_prod])) < n_min_prod) {
       return(insufficient_return)
     }
     
-    if(sum(!is.na(ratio_series$median[2*c(1:13)])) < n_min_surv) {
+    if(sum(!is.na(ratio_series$median[idx_surv])) < n_min_surv) {
       return(insufficient_return)
     }
     
-    if(any(!is.na(ratio_series$median[1 + 2*c(0:13)])) &
-       any(!is.na(ratio_series$median[2*c(1:13)]))){
-      prod_dif <- max(ratio_series$median[1+2*c(1:13)], na.rm = T) -
-        min(ratio_series$median[1+2*c(1:13)], na.rm = T)
-      surv_dif <- max(ratio_series$median[2*c(1:13)], na.rm = T) -
-        min(ratio_series$median[2*c(1:13)], na.rm = T)
+    if(any(!is.na(ratio_series$median[idx_prod])) &
+       any(!is.na(ratio_series$median[idx_surv]))){
+      # QUESTION: why are we dropping the first productivity index?
+      prod_dif <- max(ratio_series$median[idx_prod[-1]], na.rm = T) -
+        min(ratio_series$median[idx_prod[-1]], na.rm = T)
+      surv_dif <- max(ratio_series$median[idx_surv], na.rm = T) -
+        min(ratio_series$median[idx_surv], na.rm = T)
       use <- rep(1, length(ratio_series$median))
       if(element_1_exclude){
         use[1] <- 0
@@ -130,7 +130,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
         }
       }
       
-      for (i in 1:13) {
+      for (i in 1:length(idx_surv)) {
         p_i <- 1 + 2*i
         s_i <- 2*i
         
@@ -147,6 +147,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
           use[s_i] <- 0
         } else {
           uncertainty <- ratio_series$q90[s_i] - ratio_series$q10[s_i]
+          #QUESTION: is this type of thresholding still in use?
           if(uncertainty > (uncertainty_high_grade * surv_dif)) {
             use[s_i] <- 0
           }
@@ -157,11 +158,11 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
       use <- rep(FALSE, length(ratio_series$median))
     }
     
-    if(sum(use[1+2*c(0:13)]) < n_min_prod) {
+    if(sum(use[idx_prod]) < n_min_prod) {
       use <- rep(FALSE, length(ratio_series$median))
-    } else if(sum(use[2*c(1:13)]) < n_min_surv) {
+    } else if(sum(use[idx_surv]) < n_min_surv) {
       use <- rep(FALSE, length(ratio_series$median))
-    } else if ((sum(use[1 + 2*c(1:13)] * use[2*c(1:13)])) < n_min_full) {
+    } else if ((sum(use[idx_prod] * use[idx_surv])) < n_min_full) {
       use <- rep(FALSE, length(ratio_series$median))
     }
     

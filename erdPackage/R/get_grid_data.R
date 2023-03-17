@@ -14,11 +14,27 @@
 #' @param .cores number of parallel cores for `get_cell_data()` calls
 #' @param roi region of interest
 #' @export
+#' @return a list with grid-sampled data
+#' @details 
+#' The returned list object either contains a single list of lists (when time_window equals full)
+#' or a multiple lists of lists (when time_window equals weekly), one for each week. The deepest
+#' list elements contains count information for the small grid, with list elements labled as 
+#' `cell_X` with `X` the small cell index. These small cell data elements contain the following
+#' list elements returned by [get_cell_data()]:
+#' \describe{
+#' \item{`n`}{number of observations (number of zero-filled checklist available in the small cell)}
+#' \item{`n_z`}{number of zero counts}
+#' \item{`n_x`}{number of presence only observations (X's)}
+#' \item{`n_value`}{number of observations with a count value (zero or a count, i.e. non-X observations)}
+#' \item{`mean_positive`}{average count of observations with a count > 0}
+#' \item{`stixel_mean_small`}{average count for the small cell, as calculated with [stixel_mean_small()]}
+#' }
+#' The average count calculated with [stixel_mean_small()] currently assumes for presence only observations
+#' (X's) a count equal to `mean_positive`.
 get_grid_data <- function(data, .year,
                      tgrid_min, tgrid_max, time_window = "gridded",
                      min_lat, max_lat, min_lon, max_lon = Inf,
-                     large_grid = 6, small_grid = 11, time_grid = 7,
-                     roi,
+                     large_grid = 6, small_grid = 11, time_grid = 7, roi,
                      .cores = 4) {
   cell_data <- list()
   
@@ -36,7 +52,7 @@ get_grid_data <- function(data, .year,
   dg_small <- dggridR::dgconstruct(res=small_grid)
 
   pixels <- get_pixels(dg_large = dg_large, dg_small = dg_small, roi = roi)
-  all_cells_small <- pixels$roi_small$cell[pixels$roi_small$cell_large %in% zfd$seqnum_large]
+  all_cells_small <- pixels$cells_small$cell[pixels$cells_small$cell_large %in% zfd$seqnum_large]
   
   if (time_window == "gridded") {
     cl <- parallel::makeCluster(.cores, "FORK")
@@ -64,7 +80,7 @@ get_grid_data <- function(data, .year,
   attr(cell_data, "max_lat") <- max_lat
   attr(cell_data, "min_lon") <- min_lon
   attr(cell_data, "max_lon") <- max_lon
-  
+
   return(cell_data)
 }
 
@@ -85,9 +101,8 @@ get_tgrid <- function(days=7) {
 #' get a hexagonal grid over the contiguous US
 #' @param dg_large large dggridR grid
 #' @param dg_small small dggridR grid
-#' @param roi an sf multipolygon object defining the Region Of Interest (ROI)
+#' @param roi a raster object defining the Region Of Interest (ROI)
 get_pixels <- function(dg_large, dg_small, roi) {
-  # QUESTION: this rater definition is US-specific, how to generalize?
   roi_coords <- raster::as.data.frame(roi, xy = T)
   roi_coords <- roi_coords[!is.na(roi_coords$layer), ]
   roi_cells <- data.frame(cell = unique(dggridR::dgGEO_to_SEQNUM(dg_large, roi_coords$x, roi_coords$y)[[1]]))
@@ -99,7 +114,7 @@ get_pixels <- function(dg_large, dg_small, roi) {
   roi_cells_small$lon <- dggridR::dgSEQNUM_to_GEO(dg_small, roi_cells_small$cell)$lon_deg
   roi_cells_small$cell_large <- dggridR::dgGEO_to_SEQNUM(dg_large, roi_cells_small$lon, roi_cells_small$lat)[[1]]
   
-  out <- list(roi_large = roi_cells, roi_small = roi_cells_small)
+  out <- list(cells_large = roi_cells, cells_small = roi_cells_small)
   return(out)
 }
 
@@ -116,6 +131,8 @@ stixel_mean_small <- function(x){
 #    return(weighted.mean(x = c(0,2), w = c(x$n_z, x$n_x)))
     return(NA)
   } else {
+    # Rescale the numbers of zeros by the proportion non-X non-zero observations
+    # This has the effect of assuming the mean positive value for the presence only (X) observations
     n_z_rescaled <- x$n_z * x$n_value / (x$n_value + x$n_x)
     return(weighted.mean(x = c(0, x$mean_positive), w = c(n_z_rescaled, x$n_value)))
   }

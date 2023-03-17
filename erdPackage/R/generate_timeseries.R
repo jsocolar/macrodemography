@@ -25,7 +25,7 @@ abun_data_bycell <- function(abun_data, n_small_min = 10) {
 
 #' Abundance summary across years
 #' @inheritParams abun_data_bycell
-#' @return a list of data.frames for each year calculated by \link[abun_data_bycell].
+#' @return a list of data.frames for each year calculated by [abun_data_bycell()].
 #' @export
 #' @details Each list element for this function contains a data.frame for a year, provided by [abun_data]
 get_abun_summary <- function(abun_data, n_small_min) {

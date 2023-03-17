@@ -10,7 +10,7 @@ auth_token=readLines("token")
   devtools::install_github("adokter/macrodemography", subdir="erdPackage", auth_token=auth_token)
 
 # load libraries
-library(erdPackage)
+library(macrodemography)
 library(data.table) # note openmp not enabled on Mac by default. QUESTION: does this severely affect efficiency?
 library(brms)
 library(ggplot2)

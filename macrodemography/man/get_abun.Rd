@@ -12,6 +12,8 @@ get_abun(sp_data, n_rep, roi, .cores = 4)
 \item{n_rep}{number of bootstrap replicates}
 
 \item{roi}{a raster object defining the Region Of Interest (ROI)}
+
+\item{.cores}{number of parallel cores to use}
 }
 \value{
 a dataframe

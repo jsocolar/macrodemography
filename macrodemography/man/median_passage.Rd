@@ -9,6 +9,12 @@ median_passage(sp_data, season, min_day, max_day, lat1, lat2, bandwidth = 1)
 \arguments{
 \item{sp_data}{species data returned from import_from_erd}
 
+\item{season}{the season}
+
+\item{min_day}{minimum day of year}
+
+\item{max_day}{maximum day of year}
+
 \item{lat1}{southern boundary of ROI}
 
 \item{lat2}{northern boundary of ROI}

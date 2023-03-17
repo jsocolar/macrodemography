@@ -58,7 +58,7 @@ package_path <- strsplit(rstudioapi::getSourceEditorContext()$path, "inst")[[1]]
 install.packages(package_path, repos = NULL, type = 'source')
 
 # package load
-library(erdPackage)
+library(macrodemography)
 library(data.table) # don't worry about openMP warnings on Mac.
 library(brms)
 library(ggplot2)

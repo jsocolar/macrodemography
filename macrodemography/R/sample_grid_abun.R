@@ -10,7 +10,7 @@
 #' @param small_grid resolution of small grid
 #' @param large_grid resolution of large grid 
 #' @param time_grid resolution of time 
-#' @param .cores=4 cores for parallel computation
+#' @param .cores cores for parallel computation
 #' @export
 sample_grid_abun <- function(species_code, erd_path, checklists, roi, effort_thresholds, extent_space, extent_time, time_window="full", small_grid=11, large_grid=6, time_grid=7, .cores=4){
   # verify input arguments

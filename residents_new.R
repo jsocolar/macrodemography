@@ -520,6 +520,7 @@ cell_ratio_series_full=cell_ratios$replicates
 
 # compare variances in productivity and survival for each cell across years:
 data_compare_ratios <- lapply(sort(unique(tidy_ratios_summary$cell)),compare_ratio_variances, data=tidy_ratios_summary)
+
 tidy_ratios_summary
 View(left_join(data_cell,do.call(rbind,data_compare_ratios),by="cell"))
 data_cell

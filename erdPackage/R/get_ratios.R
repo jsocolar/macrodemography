@@ -3,7 +3,7 @@
 #' @param cells_all cells to compute
 #' @param period period to compute
 #' @export
-get_ratios <- function(data, cells_all, period=c("spring", "fall")){
+get_ratios <- function(data, cells_all, period=c("spring", "fall"), n_small_min=10){
   # verify we have all periods (spring and fall) available
   assert_that(all(period %in% names(data)))
   assert_that(length(period)==2)
@@ -44,8 +44,13 @@ get_ratios <- function(data, cells_all, period=c("spring", "fall")){
       cell_ratio_series[[i]]$sd <- apply(lrats, 1, sd)
       cell_ratio_series[[i]]$q10 <- apply(lrats, 1, function(x){quantile(x, .1, na.rm = T)})
       cell_ratio_series[[i]]$q90 <- apply(lrats, 1, function(x){quantile(x, .9, na.rm = T)})
-      
+      cell_ratio_series[[i]]$skewness <- apply(lrats, 1, moments::skewness)
+      cell_ratio_series[[i]]$kurtosis <- apply(lrats, 1, moments::kurtosis)
+  
       cell_ratio_series_full[[i]] <- lrats
+      # set rownames to year_period
+      # colnames already set in format "rep_i"
+      rownames(cell_ratio_series_full[[i]]) <- paste0(cell_ratio_series[[i]]$year,"_",cell_ratio_series[[i]]$period)
     } else {
       cell_ratio_series[[i]] <- cell_ratio_series_full[[i]] <- NA
     }

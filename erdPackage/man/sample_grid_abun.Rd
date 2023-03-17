@@ -8,7 +8,7 @@ sample_grid_abun(
   species_code,
   erd_path,
   checklists,
-  roi = NULL,
+  roi,
   effort_thresholds,
   extent_space,
   extent_time,
@@ -16,7 +16,8 @@ sample_grid_abun(
   small_grid = 11,
   large_grid = 6,
   time_grid = 7,
-  .cores = 4
+  .cores = 4,
+  quiet = TRUE
 )
 }
 \arguments{
@@ -42,7 +43,12 @@ sample_grid_abun(
 
 \item{time_grid}{resolution of time}
 
+\item{quiet}{if TRUE, suppress informational messages (warnings/errors still returned)}
+
 \item{.cores=4}{cores for parallel computation}
+}
+\value{
+large list object
 }
 \description{
 sample a species given thresholds on effort, space and time

@@ -3,7 +3,7 @@
 #' @param n_small_min minimum number of small cells to compute abundance index for large cell
 #' @return data.frame of abundances
 #' @export
-#' @details 
+#' @details
 #' The output data.frame has columns `cell` for the cell index, `average` for the average abundance, and columns `rep_i`
 #' containing the replicates of sampled abundance on which `average` is based.
 abun_data_bycell <- function(abun_data, n_small_min = 10) {
@@ -36,13 +36,15 @@ get_abun_summary <- function(abun_data, n_small_min) {
 #' @param cells_all numeric vector of cell ids
 #' @param spring_abun_summary spring abundance summary
 #' @param fall_abun_summary fall abundance summary
+#' @param quiet if TRUE suppress informational messages (warnings & errors still shown)
 #' @return a list of data.frames, with list elements corresponding to cells
 #' @export
 #' @details This functions pastes the spring and full abundance summaries together
 #' in one data.frame for each cell, with the spring on the uneven column indices and fall on the
 #' even column indices, with in total 2x (number of years) columns
-get_cell_timeseries <- function (cells_all, 
-                                 spring_abun_summary, fall_abun_summary) {
+get_cell_timeseries <- function (cells_all,
+                                 spring_abun_summary, fall_abun_summary,
+                                 quiet = TRUE) {
   cells <- unique(spring_abun_summary[[1]]$cell)
   cell_timeseries <- list()
   # column indices containin sampled abundance data (rep_i) and their average (average)
@@ -50,8 +52,8 @@ get_cell_timeseries <- function (cells_all,
   col_abun = 2:dim(spring_abun_summary[[1]])[2]
   for (i in seq_along(cells_all)) {
     if (cells_all[i] %in% cells) {
-      print(paste("calculating cell",i,"..."))
-      
+      if(!quiet) print(paste("calculating cell",i,"..."))
+
       cell_data <- spring_abun_summary[[1]][spring_abun_summary[[1]]$cell == cells_all[i], col_abun]
       cell_data <- rbind(cell_data, fall_abun_summary[[1]][fall_abun_summary[[1]]$cell == cells_all[i], col_abun])
       years <- as.numeric(names(spring_abun_summary))
@@ -63,7 +65,7 @@ get_cell_timeseries <- function (cells_all,
     } else {
       cell_timeseries[[i]] <- NA
     }
-    
+
   }
   names(cell_timeseries) = cells_all
   return(cell_timeseries)
@@ -80,13 +82,13 @@ get_cell_timeseries <- function (cells_all,
 #' @param element_1_exclude exclude the first year of the series
 #' @param n_min_prod minimimum number of productivity indices necessary to include
 #' any years/seasons at all
-#' @param n_min_surv minimum number of survicial indices necessary to include any 
+#' @param n_min_surv minimum number of survicial indices necessary to include any
 #' years/seasons at all
 #' @param n_min_full minimum number of individual years with both a productivity and
 #' a survical index to include any years/seasons at all
 #' @return a logical vector of which elements to include
 #' @export
-use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf, 
+use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
                             inf_exclude = F, element_1_exclude = T,
                             n_min_prod = 5, n_min_surv = 5,
                             n_min_full = 5) {
@@ -97,21 +99,21 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
         ratio_series[[i]][is.infinite(ratio_series[[i]])] <- NA
       }
     } else {contains_inf <- FALSE}
-    
-    insufficient_return <- as.logical(rep(0, length(ratio_series$median))) 
+
+    insufficient_return <- as.logical(rep(0, length(ratio_series$median)))
     if(inf_exclude & contains_inf) {
       return(insufficient_return)
     }
-    
+
     # QUESTION: it seems these indices are conditional on year, i.e. expecting 13 years of data. Needs to be modified to be aware of available years
     if(sum(!is.na(ratio_series$median[1 + 2*c(0:13)])) < n_min_prod) {
       return(insufficient_return)
     }
-    
+
     if(sum(!is.na(ratio_series$median[2*c(1:13)])) < n_min_surv) {
       return(insufficient_return)
     }
-    
+
     if(any(!is.na(ratio_series$median[1 + 2*c(0:13)])) &
        any(!is.na(ratio_series$median[2*c(1:13)]))){
       prod_dif <- max(ratio_series$median[1+2*c(1:13)], na.rm = T) -
@@ -129,11 +131,11 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
           use[1] <- 0
         }
       }
-      
+
       for (i in 1:13) {
         p_i <- 1 + 2*i
         s_i <- 2*i
-        
+
         if(is.na(ratio_series$median[p_i])){
           use[p_i] <- 0
         } else {
@@ -142,7 +144,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
             use[p_i] <- 0
           }
         }
-        
+
         if(is.na(ratio_series$median[s_i])){
           use[s_i] <- 0
         } else {
@@ -156,7 +158,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
     } else {
       use <- rep(FALSE, length(ratio_series$median))
     }
-    
+
     if(sum(use[1+2*c(0:13)]) < n_min_prod) {
       use <- rep(FALSE, length(ratio_series$median))
     } else if(sum(use[2*c(1:13)]) < n_min_surv) {
@@ -164,7 +166,7 @@ use_cell_years <- function (ratio_series, uncertainty_high_grade = Inf,
     } else if ((sum(use[1 + 2*c(1:13)] * use[2*c(1:13)])) < n_min_full) {
       use <- rep(FALSE, length(ratio_series$median))
     }
-    
+
     return(use)
   }
 }

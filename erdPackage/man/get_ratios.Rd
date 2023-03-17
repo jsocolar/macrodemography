@@ -4,14 +4,27 @@
 \alias{get_ratios}
 \title{Get log-ratios}
 \usage{
-get_ratios(data, cells_all, period = c("spring", "fall"))
+get_ratios(
+  data,
+  cells_all,
+  n_small_min,
+  period = c("spring", "fall"),
+  quiet = TRUE
+)
 }
 \arguments{
 \item{data}{abundance index data}
 
 \item{cells_all}{cells to compute}
 
+\item{n_small_min}{minimum number of small cells to compute an abundance}
+
 \item{period}{period to compute}
+
+\item{quiet}{if TRUE, suppress informational messages (warnings/errors still returned)}
+}
+\value{
+large list object
 }
 \description{
 Get log-ratios

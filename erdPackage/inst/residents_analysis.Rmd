@@ -1,0 +1,62 @@
+---
+title: "Macrodemography analyses"
+author: "Jacob Socolar & Adriaan Dokter"
+date: "`r Sys.Date()`"
+output: html_document
+params:
+  species_code: "carwre"
+  path: "/Users/Jacob/Dropbox/Work/macrodemography/residents"
+
+---
+
+```{r packages}
+# we make sure we have the same version of the erdPackage as this .rmd
+package_path <- strsplit(rstudioapi::getSourceEditorContext()$path, "inst")[[1]][1]
+install.packages(package_path, repos = NULL, type = 'source')
+
+# Install an older version of dggridR from source. See:
+# https://github.com/r-barnes/dggridR/issues/63#issuecomment-1454929653
+#remotes::install_github("r-barnes/dggridR", ref = "ec2a040")
+
+# package load
+library(erdPackage)
+library(ggplot2)
+library(dggridR)
+
+```
+
+```{r misc-setup}
+# set color scales
+cols_bd <- c(hsv(seq(0,.17,length.out = 100),1,seq(.9,.6,length.out = 100)), hsv(seq(.45,.65, length.out = 100),1,seq(.6,1,length.out = 100)))
+cols_bd2 <- c(hsv(seq(0,.17,length.out = 100),seq(1, .2, length.out = 100),.9), hsv(seq(.45,.65, length.out = 100),seq(.2, 1, length.out = 100),.9))
+
+# blank ggplot2 theme
+blank_theme <-
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank()
+  )
+
+# for an area of ~ 70000 km^2, we get a resolution of 6:
+grid_large <- dggridR::dgconstruct(area = params$hexagon_area_large)
+# for an area of ~ 300 km^2, we get a resolution of 11:
+grid_small <- dggridR::dgconstruct(area = params$hexagon_area_small)
+
+```
+
+```{r load-data}
+data <- readRDS(paste0(params$path, "/abun_data/", params$species_code , ".rds"))
+
+```
+
+```{r obtain-ratios}
+cell_ratios <- get_ratios(data$abun, cells_all)
+tidy_ratios <- do.call(rbind,lapply(cell_ratios$summary[!is.na(cell_ratios$summary)], as_tibble))
+
+```

@@ -2,10 +2,13 @@
 
 export(abun_data_bycell)
 export(check_brmsfit_diagnostics)
+export(daymet_extract)
 export(get_abun)
 export(get_abun_summary)
 export(get_cell_timeseries)
 export(get_grid_data)
+export(get_higher_moments)
+export(get_ratios)
 export(import_checklists)
 export(import_from_erd)
 export(median_passage)

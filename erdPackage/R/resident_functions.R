@@ -175,13 +175,13 @@ get_higher_moments <- function(cell_ratios, cells_all, cells) {
 #' perform formal test of whether productivity or survival variance is larger
 #' @param cell_ratios cell ratios object
 #' @param cells_all all cells in cell_ratios
-#' @param cells all cells over which output is desired
+#' @param cells the cells over which output is desired
 #' @param years years underlying the cell ratios object
 #' @param min_n minimum sample size for which to estimate a variance
 #' @return dataframe. prob_surv gives posterior probability that survival variance
 #'  is higher than productivity variance
 #'  coef is the average log-scale effect.
-#'  @export
+#' @export
 variance_test <- function(cell_ratios, cells_all, cells, years, min_n = 5){
   cell_ratio_series <- cell_ratios$summary
   cell_ratio_series_full <- cell_ratios$replicates
@@ -293,7 +293,7 @@ variance_test <- function(cell_ratios, cells_all, cells, years, min_n = 5){
 #' @return 2-element list.  prob_surv gives posterior probability that survival variance
 #'  is higher than productivity variance
 #'  coef is the average log-scale effect.
-#'  @export
+#' @export
 weather_regressions <- function(
   cell_ratios, cells_all, years, min_n,
   janfeb_temp, julaug_temp, decmar_swe

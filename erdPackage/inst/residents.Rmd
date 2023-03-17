@@ -39,9 +39,11 @@ params:
   hexagon_area_small: 300 # desired approx. area of small cells
   n_small_min: 10 # minimum number of small cells to compute abundance index for large cell
   species_to_process: !r c("carwre","norcar")
-  always_import_checklists: TRUE
-  always_filter_checklists: TRUE
-  always_resample_bootstrap: TRUE
+  always_import_checklists: FALSE
+  always_filter_checklists: FALSE
+  always_resample_bootstrap: FALSE
+  always_run_variance_test: FALSE
+  always_run_regressions: FALSE
   region: "eastern_us" # region name for roi
   always_download_weather: FALSE
   min_n_for_variance: 5
@@ -71,6 +73,7 @@ library(ebirdst)
 library(fasterize)
 library(dggridR)
 library(rgee)
+library(tidyr)
 
 ```
 
@@ -422,19 +425,20 @@ set.seed(4)
 for(species_code in params$species_to_process){
   var_save_path <- paste0(params$output_path, "/variance_results/", species_code)
   dir.create(var_save_path, recursive = TRUE, showWarnings = FALSE)
-  print(paste0("processing_species ", species_code))
-  file_path <- paste0(params$output_path, "/abun_data/", species_code, ".rds")
-  data <- readRDS(file_path)
-  
-  file_path <- paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds")
-  ratios <- readRDS(file_path)
-  
-  cells <- unique(data$abun$spring[[1]]$cell)
-  cell_lrat_sd <- variance_test(ratios, cells_all, cells, params$years)
-  
-  saveRDS(cell_lrat_sd, paste0(var_save_path, "/variances.RDS"))
+  if(params$always_run_variance_test | !file.exists(paste0(var_save_path, "/variances.RDS"))){
+    print(paste0("processing_species ", species_code))
+    file_path <- paste0(params$output_path, "/abun_data/", species_code, ".rds")
+    data <- readRDS(file_path)
+    
+    file_path <- paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds")
+    ratios <- readRDS(file_path)
+    
+    cells <- unique(data$abun$spring[[1]]$cell)
+    cell_lrat_sd <- variance_test(ratios, cells_all, cells, params$years)
+    
+    saveRDS(cell_lrat_sd, paste0(var_save_path, "/variances.RDS"))
+  }
 }
-
 
 ```
 
@@ -517,22 +521,25 @@ decmar_swe <- readRDS(paste0(params$output_path, "/weather/decmar_swe.RDS"))
 for(species_code in params$species_to_process){
   regression_save_path <- paste0(params$output_path, "/regression_results/", species_code)
   dir.create(regression_save_path, recursive = TRUE, showWarnings = FALSE)
-  print(paste0("processing_species ", species_code))
-  file_path <- paste0(params$output_path, "/abun_data/", species_code, ".rds")
-  data <- readRDS(file_path)
   
-  file_path <- paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds")
-  ratios <- readRDS(file_path)
-  
-  cells <- unique(data$abun$spring[[1]]$cell)
-  plotting_data2 <- weather_regressions(
-    ratios, cells_all, params$years, min_n = 5, 
-    janfeb_temp = janfeb_temp, 
-    julaug_temp = julaug_temp, 
-    decmar_swe = decmar_swe
-  )
-  
-  saveRDS(plotting_data2, paste0(regression_save_path, "/regressions.RDS"))
+  if(params$always_run_regressions | !file.exists(paste0(regression_save_path, "/regressions.RDS"))){
+    print(paste0("processing_species ", species_code))
+    file_path <- paste0(params$output_path, "/abun_data/", species_code, ".rds")
+    data <- readRDS(file_path)
+    
+    file_path <- paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds")
+    ratios <- readRDS(file_path)
+    
+    cells <- unique(data$abun$spring[[1]]$cell)
+    plotting_data2 <- weather_regressions(
+      ratios, cells_all, params$years, min_n = 5, 
+      janfeb_temp = janfeb_temp, 
+      julaug_temp = julaug_temp, 
+      decmar_swe = decmar_swe
+    )
+    
+    saveRDS(plotting_data2, paste0(regression_save_path, "/regressions.RDS"))
+  }
 }
 
 ```
@@ -562,23 +569,26 @@ for(species_code in params$species_to_process){
       `p(winter swe)` = swe_p_bayes
     ) |>
     mutate(
-      lon = dggridR::dgSEQNUM_to_GEO(grid_large, plotting_data2$cell)$lon_deg
+      lon = dggridR::dgSEQNUM_to_GEO(grid_large, cell)$lon_deg
     ) |>
     filter(lon > params$plotting_xlim[1])
   
   grid <- dggridR::dgcellstogrid(grid_large,plotting_data2$cell,frame=TRUE,wrapcells=TRUE)
-  grid_data  <- merge(grid,plotting_data2,by.x="cell") |>
+  grid3  <- merge(grid,plotting_data2,by="cell") |>
     filter(long > params$plotting_xlim[1] + 2) |>
     filter(!is.na(`mean slope`))
   
-  for (i in 2:25) {
-    plotting_fun(grid_data, sym(names(plotting_data2)[i]), fill_lim = NULL)
+  for (i in 2:22) {
+    plotting_fun(
+      grid3,
+      sym(names(plotting_data2)[i]),
+      x_lim = params$plotting_xlim, fill_lim = NULL)
   }
   
   grid_data <- grid3 |>
     filter(!is.na(`mean slope`))
   
-  fl <- max(abs(grid_3$`mean slope`), na.rm = T) + .1
+  fl <- max(abs(grid3$`mean slope`), na.rm = T) + .1
   fill_lim <- c(-fl, fl)
   
   p <- ggplot() + coord_fixed() + blank_theme +
@@ -588,12 +598,12 @@ for(species_code in params$species_to_process){
       alpha = 2*abs(grid_data$`p(winter temp)` - 0.5))   +
     geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd, na.value=NA, limits = fill_lim)
-  p
+  print(p)
   
   grid_data <- grid3 |>
     filter(!is.na(julaug_mean_bayes))
   
-  fl <- max(abs(grid_3$julaug_mean_bayes), na.rm = T) + .1
+  fl <- max(abs(grid3$julaug_mean_bayes), na.rm = T) + .1
   fill_lim <- c(-fl, fl)
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
@@ -606,7 +616,7 @@ for(species_code in params$species_to_process){
   grid_data <- grid3 |>
     filter(!is.na(swe_mean_bayes))
   
-  fl <- max(abs(grid_3$swe_mean_bayes), na.rm = T) + .1
+  fl <- max(abs(grid3$swe_mean_bayes), na.rm = T) + .1
   fill_lim <- c(-fl, fl)
   p <- ggplot() +  coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
@@ -713,7 +723,7 @@ for(species_code in params$species_to_process){
     # remove a disconnected cell
 #    filter(cell != dggridR::dgGEO_to_SEQNUM(grid_large, -102, 41)$seqnum) |>
     # remove a region where we have sparse data
-    filter(!(car_data$lat > 38.7 & car_data$lon < -99.5))
+    filter(!(lat > 38.7 & lon < -99.5))
   
   
   ##### janfeb #####
@@ -721,12 +731,12 @@ for(species_code in params$species_to_process){
     filter(!is.na(`mean slope`)) |>
     select(
       c("cell", "mean slope", "janfeb_median_bayes", "janfeb_sd_bayes", 
-        "janfeb_skew_bayes", "janfeb_kurt_bayes")
+        "janfeb_skew_bayes", "janfeb_kurt_bayes", "lat", "cell_id")
     ) |>
     mutate(
-      slope_scaled <- scale(`mean slope`),
+      slope_scaled = scale(`mean slope`),
       lat_scaled = scale(lat),
-      known_se = janfeb_sd_bayes/sd(janfeb_mean_bayes)
+      known_se = janfeb_sd_bayes/sd(`mean slope`)
     )
   
   # get adjacency matrix
@@ -756,8 +766,7 @@ for(species_code in params$species_to_process){
       iter = 12000, warmup = 2000, 
       cores = 4, adapt_delta = .8, max_treedepth = 11, refresh = 0)
   summary(icar_fit)
-  params <- as_draws_df(icar_fit)
-  
+
   rstan::get_bfmi(icar_fit$fit)
   
   pl <-  posterior_epred(icar_fit, re.form = NA, incl_autocor = F)
@@ -777,7 +786,6 @@ for(species_code in params$species_to_process){
   q_frame$point_lower <- q_frame$slope - q_frame$known_se
   q_frame$point_upper <- q_frame$slope + q_frame$known_se
   certainty <- min(q_frame$known_se)/q_frame$known_se
-  set.seed(1)
   q_frame$lat_jit <- q_frame$latitude + rnorm(nrow(q_frame), 0, .5)
   
   fill_color <- "salmon2"
@@ -867,22 +875,22 @@ for(species_code in params$species_to_process){
     merge(smooth_mean, by = "cell")
   
   grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
-  grid_3  <- merge(grid,plotting_data3,by.x="cell")
+  grid3  <- merge(grid,plotting_data3,by="cell")
   
-  grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
+  grid_data <- grid3[!is.na(grid3$smooth_prob), ]
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_prob), alpha = .8)   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_prob), alpha = .8)   +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd2, na.value=NA, limits = c(0,1)) + 
     xlim(params$plotting_xlim)
-  p
+  print(p)
   
   fl <- max(abs(grid_data$smooth_mean), na.rm = T) + .1
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_mean), alpha = 2*abs(grid_data$smooth_prob - 0.5))   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_mean), alpha = 2*abs(grid_data$smooth_prob - 0.5))   +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd, na.value=NA, limits = c(-fl, fl)) +
     xlim(params$plotting_xlim)
   p
@@ -893,10 +901,10 @@ for(species_code in params$species_to_process){
     filter(!is.na(julaug_mean_bayes)) |>
     select(
       c("cell", "julaug_mean_bayes", "julaug_median_bayes", "julaug_sd_bayes", 
-        "julaug_skew_bayes", "julaug_kurt_bayes")
+        "julaug_skew_bayes", "julaug_kurt_bayes", "lat", "cell_id")
     ) |>
     mutate(
-      slope_scaled <- scale(julaug_mean_bayes),
+      slope_scaled = scale(julaug_mean_bayes),
       lat_scaled = scale(lat),
       known_se = julaug_sd_bayes/sd(julaug_mean_bayes)
     )
@@ -985,22 +993,22 @@ for(species_code in params$species_to_process){
   plotting_data3 <- merge(plotting_data3, smooth_mean, by = "cell")
   
   grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
-  grid_3  <- merge(grid,plotting_data3,by.x="cell")
+  grid3  <- merge(grid,plotting_data3,by="cell")
   
-  grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
+  grid_data <- grid3[!is.na(grid3$smooth_prob), ]
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_prob), alpha = .8)   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_prob), alpha = .8)   +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd2, na.value=NA, limits = c(0,1)) + xlim(c(-107, -65))
   p
   
   fl <- max(abs(grid_data$smooth_mean), na.rm = T) + .1
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_mean), 
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_mean), 
                  alpha = 2*abs(grid_data$smooth_prob - 0.5))   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd, na.value=NA, limits = c(-fl, fl)) + xlim(c(-107, -65))
   p
   
@@ -1009,12 +1017,12 @@ for(species_code in params$species_to_process){
     filter(!is.na(swe_mean_bayes)) |>
     select(
       c("cell", "swe_mean_bayes", "swe_median_bayes", "swe_sd_bayes", 
-        "swe_skew_bayes", "swe_kurt_bayes")
+        "swe_skew_bayes", "swe_kurt_bayes", "lat", "cell_id")
     ) |>
     #### I don't remember why we have the below filter in here; need to verify ####
     filter(swe_mean_bayes < 1 & swe_mean_bayes > -1) |>
     mutate(
-      slope_scaled <- scale(swe_mean_bayes),
+      slope_scaled = scale(swe_mean_bayes),
       lat_scaled = scale(lat),
       known_se = swe_sd_bayes/sd(swe_mean_bayes)
     )
@@ -1059,7 +1067,6 @@ for(species_code in params$species_to_process){
   true_values <- matrix(nrow = 40000, ncol = npt)
   
   for(i in 1:npt) {
-    print(i)
     M <- car_data$slope_scaled[i]
     se <- car_data$known_se[i]
     LP <-  posterior_linpred(icar_fit, re.form = NULL, incl_autocor = T)[ , i]
@@ -1102,22 +1109,22 @@ for(species_code in params$species_to_process){
   plotting_data3 <- merge(plotting_data3, smooth_mean, by = "cell")
   
   grid <- dggridR::dgcellstogrid(grid_large,plotting_data3$cell,frame=TRUE,wrapcells=TRUE)
-  grid_3  <- merge(grid,plotting_data3,by.x="cell")
+  grid3  <- merge(grid,plotting_data3,by="cell")
   
-  grid_data <- grid_3[!is.na(grid_3$smooth_prob), ]
+  grid_data <- grid3[!is.na(grid3$smooth_prob), ]
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_prob), alpha = .8)   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_prob), alpha = .8)   +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd2, na.value=NA, limits = c(0,1)) + xlim(c(-107, -65))
   p
   
   fl <- max(abs(grid_data$smooth_mean), na.rm = T) + .1
   p <- ggplot() + coord_fixed() + blank_theme +
     geom_polygon(data=states, aes(x=long, y=lat, group=group), fill=NA, color="black")   +
-    geom_polygon(data=grid_data, aes(x=long, y=lat, group=group, fill = smooth_mean), 
+    geom_polygon(data=grid_data, aes(x=long, y=lat.x, group=group, fill = smooth_mean), 
                  alpha = 2*abs(grid_data$smooth_prob - 0.5))   +
-    geom_path(data=grid_data, aes(x=long, y=lat, group=group), alpha=0.4, color="white") +
+    geom_path(data=grid_data, aes(x=long, y=lat.x, group=group), alpha=0.4, color="white") +
     scale_fill_gradientn(colours = cols_bd, na.value=NA, limits = c(-fl, fl)) + xlim(c(-107, -65))
   p
 }

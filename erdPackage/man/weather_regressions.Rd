@@ -35,7 +35,6 @@ weather_regressions(
 2-element list.  prob_surv gives posterior probability that survival variance
 is higher than productivity variance
 coef is the average log-scale effect.
-@export
 }
 \description{
 perform weather regressions. currently expects to see data (and perform regressions)

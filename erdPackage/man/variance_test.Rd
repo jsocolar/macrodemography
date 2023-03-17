@@ -11,7 +11,7 @@ variance_test(cell_ratios, cells_all, cells, years, min_n = 5)
 
 \item{cells_all}{all cells in cell_ratios}
 
-\item{cells}{all cells over which output is desired}
+\item{cells}{the cells over which output is desired}
 
 \item{years}{years underlying the cell ratios object}
 
@@ -21,7 +21,6 @@ variance_test(cell_ratios, cells_all, cells, years, min_n = 5)
 dataframe. prob_surv gives posterior probability that survival variance
 is higher than productivity variance
 coef is the average log-scale effect.
-@export
 }
 \description{
 perform formal test of whether productivity or survival variance is larger

@@ -30,10 +30,7 @@ get_abun <- function(sp_data, n_rep, roi, .cores = 4){
 #' Get abundance for one timeslice
 #' @param sp_data Data for a particular species and year from get_grid_data()
 #' @param t index for the timeslice
-#' @param cells output of 
-
-
-() subset to ROI
+#' @param cells output of get_pixels() subset to ROI
 #' @param big_cells list of the big-cell identities
 #' @param n_rep number of bootstrap replicates
 get_abun_tgrid_slice <- function(sp_data, t, cells, big_cells, n_rep){

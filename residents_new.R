@@ -452,6 +452,7 @@ if(resample_data){
 # check we have valid values:
 sapply(1:1000,function(x) data$grid$fall[["2019"]][[1]][[x]]$stixel_mean_small)
 data$grid$spring$`2018`
+
 #################################
 # Calculate spring/fall log-ratios 
 #################################

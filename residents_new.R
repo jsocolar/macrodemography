@@ -1430,7 +1430,7 @@ p <- ggplot() + coord_fixed() + blank_theme +
 p
 
 
-
+##############
 
 average_indices <- data.frame(cell = cells_all, prod_mean = NA, surv_mean = NA)
 for(i in seq_along(cells_all)){

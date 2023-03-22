@@ -452,6 +452,7 @@ if(resample_data){
 # check we have valid values:
 sapply(1:1000,function(x) data$grid$fall[["2019"]][[1]][[x]]$stixel_mean_small)
 data$grid$spring$`2018`
+
 #################################
 # Calculate spring/fall log-ratios 
 #################################
@@ -1430,7 +1431,7 @@ p <- ggplot() + coord_fixed() + blank_theme +
 p
 
 
-
+##############
 
 average_indices <- data.frame(cell = cells_all, prod_mean = NA, surv_mean = NA)
 for(i in seq_along(cells_all)){

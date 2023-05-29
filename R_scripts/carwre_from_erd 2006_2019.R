@@ -2,6 +2,7 @@
 ####
 #### Parameters -------------------------------------------------------------
 ####
+
 params <- list()
 if(Sys.info()[["user"]]=="amd427"){
   params$erd_path <- "~/Dropbox/macrodemography/erd/erd.db"
@@ -110,8 +111,8 @@ if(params$region == "eastern_us"){
   region_of_interest <- spData::us_states
 } else if(params$region == "north_america") {
   region_of_interest <- ne_states(country =  c("United States of America","Canada"), returnclass = "sf") %>%
-  filter(region != "Northern Canada") %>%
-  filter(!name %in% c("Hawaii", "Alaska"))
+    filter(region != "Northern Canada") %>%
+    filter(!name %in% c("Hawaii", "Alaska"))
 } else{
   region_of_interest <- spData::us_states %>% filter(tolower(NAME) %in% params$region)
 }
@@ -119,9 +120,9 @@ if(params$region == "eastern_us"){
 # NOTE: this adds additional cropping of the region of interest
 # adjust if necessary
 raster_of_interest <- fasterize::fasterize(region_of_interest,
-                                   raster::raster(ncol=1000, nrow = 1000,
-                                                  xmn = -125, xmx = -66,
-                                                  ymn =24, ymx = 50))
+                                           raster::raster(ncol=1000, nrow = 1000,
+                                                          xmn = -125, xmx = -66,
+                                                          ymn =24, ymx = 50))
 ####
 #### Define hexagon grids -------------------------------------------------------------
 ####
@@ -164,13 +165,13 @@ if(params$always_filter_checklists | !file.exists(filtered_checklists_path)){
         grid_large,
         .$longitude,
         .$latitude
-        )[[1]],
+      )[[1]],
       seqnum_small = dggridR::dgGEO_to_SEQNUM(
         grid_small,
         .$longitude,
         .$latitude
-        )[[1]]
-      )
+      )[[1]]
+    )
   saveRDS(checklists, filtered_checklists_path)
 } else {
   checklists <- readRDS(filtered_checklists_path)
@@ -182,9 +183,10 @@ cells_all <- unique(checklists$seqnum_large)
 ####
 #### Bootstrap abundances  -------------------------------------------------------------
 ####
+
 for(species_code in params$species_to_process){
   file_out <- paste0(params$output_path, "/abun_data/", species_code , ".rds")
-
+  
   if(params$always_resample_bootstrap | !file.exists(file_out)){
     data <-
       sample_grid_abun(
@@ -205,18 +207,18 @@ for(species_code in params$species_to_process){
 for(species_code in params$species_to_process){
   ##### load abundance data
   file_species <- paste0(params$output_path, "/abun_data/", species_code , ".rds")
-
+  
   print(paste("loading data from file", file_species,"..."))
   data <- readRDS(file_species)
-
-# Get demographic indices
+  
+  # Get demographic indices
   cell_ratios <- get_ratios(data$abun, cells_all, n_small_min = params$n_small_min, quiet=params$quiet)
   tidy_ratios <- make_ratios_tidy(cell_ratios)
-
+  
   # rename fall/spring ratios to productivity/recruitment:
   tidy_ratios$summary %>%
     mutate(season=ifelse(period=="fall", "prod","surv")) -> tidy_ratios$summary
-
+  
   # save the ratio data
   saveRDS(tidy_ratios, paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds"))
 }
@@ -225,7 +227,7 @@ for(species_code in params$species_to_process){
 #### Plot demographic indices ------------------------------------------------------
 ####
 
-species_code <- c("carwre", "norcar")
+species_code <- c("carwre")
 tidy_ratios <- readRDS(paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds"))
 
 # select cells with at least 20 valid ratios
@@ -236,6 +238,25 @@ tidy_ratios$summary %>%
 
 # plot selected cell 20 (example)
 plot_ratios(cells_select[10], data=tidy_ratios$summary)
+length(cells_select) 
+
+# Plotting demographic indices for all cells 
+library(gridExtra)
+# Initialize a list to hold the plots
+plots <- list()
+# Loop through each cell
+for (i in seq_along(cells_select)) {
+  # Generate a plot for the current cell
+  p <- plot_ratios(cells_select[i], data=tidy_ratios$summary)+theme(legend.position = "none")
+  # Add the plot to the list of plots
+  plots[[length(plots) + 1]] <- p
+}
+
+# Arrange the plots in a 3x6 grid and display
+p <- grid.arrange(grobs = plots, ncol = 10, nrow=7)
+
+# ggsave("~/Documents/plots/carwre_norcar/carwre_surv_prod_flact_summer.png", plot=p, width = 60, height= 40, units = "cm")  
+
 
 ####
 #### Verify normality assumptions ------------------------------------------------------
@@ -260,12 +281,12 @@ for(species_code in params$species_to_process){
 ####
 for(species_code in params$species_to_process){
   tidy_ratios <- readRDS(paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds"))
-
+  
   # compare variances in productivity and survival for each cell across years:
   var_save_path <- paste0(params$output_path, "/variance_results/", species_code,"/variance_test.rds")
   dir.create(dirname(var_save_path), recursive = TRUE, showWarnings = FALSE)
   if(params$always_run_variance_test | !file.exists(var_save_path)){
-      print(paste0("processing_species ", species_code))
+    print(paste0("processing_species ", species_code))
     data_compare_ratios <- lapply(sort(unique(tidy_ratios$summary$cell)),
                                   compare_ratio_variances, data=tidy_ratios$summary,
                                   n_ratio_min=params$n_year_min,
@@ -297,7 +318,7 @@ plot2 <- list()
 for(species_code in params$species_to_process){
   var_save_path <- paste0(params$output_path, "/variance_results/", species_code,"/variance_test.rds")
   cell_lrat_sd <- readRDS(var_save_path)
-
+  
   tidy_ratios$summary %>%
     select(cell, n_prod,n_surv,n) %>%
     group_by(cell) %>%
@@ -305,25 +326,25 @@ for(species_code in params$species_to_process){
     right_join(cell_lrat_sd, by="cell") %>%
     filter(n_prod >= params$n_year_min & n_surv >= params$n_year_min) %>%
     filter(!is.na(p_survival_variance_higher)) -> plotting_data
-
+  
   dggridR::dgcellstogrid(
-      grid_large,
-      plotting_data$cell,
-      frame=TRUE,
-      wrapcells=TRUE
-      ) %>%
+    grid_large,
+    plotting_data$cell,
+    frame=TRUE,
+    wrapcells=TRUE
+  ) %>%
     mutate(cell=as.numeric(cell)) %>%
     left_join(plotting_data, by="cell") -> grid2
-
+  
   # define color scales
   scale_viridis <- viridis::scale_fill_viridis(limits = c(params$n_year_min, length(params$years)))
   scale_blue_red <- scale_fill_gradientn(colours = cols_bd2, na.value=NA, limits = c(0, 1))
   fl <- max(abs(grid2$effect_size_log), na.rm = T) + .1
-
+  
   
   # plot number of years with a productivity index
   p1<- plot_cells_on_map(grid2, "n_prod", color_scale=scale_viridis)
-
+  
   print(p1)
   # plot number of years with a survival index
   p2=plot_cells_on_map(grid2, "n_surv", color_scale=scale_viridis)
@@ -341,9 +362,9 @@ for(species_code in params$species_to_process){
     xlim(params$plotting_xlim)
   print(p4)
   
-plot1[[species_code]] <- gridExtra::grid.arrange(p1, p2, ncol=1, nrow=2, top=species_code)
-plot2[[species_code]] <- gridExtra::grid.arrange(p3, top=species_code)
-
+  plot1[[species_code]] <- gridExtra::grid.arrange(p1, p2, ncol=1, nrow=2, top=species_code)
+  plot2[[species_code]] <- gridExtra::grid.arrange(p3, top=species_code)
+  
 }
 
 do.call(gridExtra::grid.arrange, c(plot1, ncol=2))
@@ -457,15 +478,15 @@ if (params$always_download_weather | !file.exists(weather_file) | !file.exists(f
 for(species_code in params$species_to_process){
   regression_save_path <- paste0(params$output_path, "/regression_results/", species_code)
   dir.create(regression_save_path, recursive = TRUE, showWarnings = FALSE)
-
+  
   if(params$always_run_regressions | !file.exists(paste0(regression_save_path, "/regressions.rds"))){
     print(paste0("processing_species ", species_code))
-
+    
     file_path <- paste0(params$output_path, "/abun_data/", species_code, "_ratios.rds")
     tidy_ratios <- readRDS(file_path)
-
+    
     data_regression <- weather_regressions(tidy_ratios, data_daymet,params$daymet,params$n_year_min, quiet=FALSE)
-
+    
     saveRDS(data_regression, paste0(regression_save_path, "/regressions.rds"))
   }
 }
@@ -498,7 +519,7 @@ plot_regression <- function(data, label_daymet, moment, x_lim, fill_lim="auto", 
   # when alpha is NULL, color according to the certainty that the coefficient is either positively or
   # negatively different from zero
   if(alpha=="auto") grid_data$alpha=2*abs(grid_data$p_value-0.5)
-
+  
   if(identical(fill_lim,"auto")){
     max_moment = max(abs(grid_data[[moment]]), na.rm = T) + 0.1
     fill_lim = c(-max_moment,max_moment)
@@ -510,7 +531,7 @@ plot_regression <- function(data, label_daymet, moment, x_lim, fill_lim="auto", 
     scale_fill_gradientn(colours = colors, na.value=NA, limits=fill_lim, oob=scales::squish) + xlim(x_lim)
   if(labels) p = p + geom_text(aes(x=long,y=lat,label=cell), data=data_label)
   print(p)
-
+  
 }
 
 # plot excess kurtosis and skewness of the regression coefficient posterior:
@@ -672,7 +693,7 @@ icar_regression <- function(data, adjancency_mat, warmup=2000, cores=4, iter=120
   n_samples = cores*(iter-warmup)
   # initialize matrix to contain posterior draws for each cell:
   true_values <- matrix(nrow = n_samples, ncol = npt)
-
+  
   print("Drawing from posterior ...")
   for(i in 1:npt) {
     print(paste("cell",i,"/",npt,"..."))

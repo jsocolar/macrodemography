@@ -510,10 +510,10 @@ for(sp in seq_len(nrow(species))){
     aes(x = ebird, y = bbs, ymin = lower__, ymax = upper__)) + 
     geom_ribbon(linetype = 0, alpha = .2) + geom_line())
   
-  
+  # The below plot is the raw estimates with no treatment of uncertainty.
   print(ggplot(
     overlaps, 
-    aes(x = ebird, y = bbs, color = stratum, alpha = alpha)) + 
+    aes(x = ebird, y = bbs, color = stratum)) + 
     geom_point() +
     geom_smooth(method = lm, se = F))
   

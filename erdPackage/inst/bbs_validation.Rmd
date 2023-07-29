@@ -1,0 +1,534 @@
+---
+title: "BBS validation"
+author: "Jacob Socolar"
+date: "`r Sys.Date()`"
+output: html_document
+params:
+  bcr_path: "/Users/jacob/Dropbox/Work/Useful_data/BCR_Terrestrial/BCR_Terrestrial_master.shp"
+  erd_path: "/Users/Jacob/Dropbox/Work/macrodemography/erd"
+  output_path: "/Users/Jacob/Dropbox/Work/macrodemography/residents"
+  years: !r c(2006:2019)
+  extent_space: !r
+    data.frame(
+      min_lon=-125, 
+      max_lon=-66, 
+      min_lat=24, 
+      max_lat=50
+    )
+  time_grid: 7 # resolution of the time grid
+  tgrid_min: 22
+  tgrid_max: 25
+  # we need to constrain altitudes, particularly in the western US, where 
+  # high altitudes are snowbound and inaccessible in spring. We don't want huge
+  # variation in the elevations visited between April and October, especially
+  # because that variation will probably depend on winter snow conditions, 
+  # leading to interannual idosyncracies that are noisy and possibly correlated
+  # with weather variables of interest. The appropriate altitudinal cutoff will
+  # be higher in the Sierras and southern Rockies than in the Cascades and
+  # northern Rockies.
+  max_altitude: 2000
+  max_altitude_above_lat42: 1500
+  effort_thresholds: !r
+    data.frame(
+      dist_max=3, 
+      time_min=5/60, 
+      time_max=1, 
+      cci_min=0
+    )
+  hexagon_area_small: 300 # desired approx. area of small cells
+  n_small_min: 10 # minimum number of small cells to compute abundance index for large cell
+  species_to_process: "carwre"
+  always_import_checklists: FALSE
+  always_filter_checklists: FALSE
+  always_resample_bootstrap: FALSE
+  region: "eastern_us" # region name for roi
+  plotting_xlim: !r c(-107, -65)
+---
+
+```{r setup, include=FALSE}
+# Install an older version of dggridR from source. See:
+# https://github.com/r-barnes/dggridR/issues/63#issuecomment-1454929653
+#remotes::install_github("r-barnes/dggridR", ref = "ec2a040")
+
+# we make sure we have the same version of the erdPackage as this .rmd
+package_path <- strsplit(rstudioapi::getSourceEditorContext()$path, "inst")[[1]][1]
+install.packages(package_path, repos = NULL, type = 'source')
+
+library(sf)
+library(dplyr)
+library(data.table)
+library(erdPackage)
+library(bbsBayes)
+library(brms)
+library(magrittr)
+library(ggplot2)
+```
+
+
+```{r misc-prep}
+bcrs <- st_read(params$bcr_path) |>
+  st_make_valid() |>
+  group_by(BCR) |>
+  summarise(geometry = st_union(geometry))
+bcrs2 <- sf::st_transform(bcrs, 4326)
+
+species <- species_codes |>
+  filter(six %in% params$species_to_process)
+
+```
+
+```{r import-checklists}
+checklists_path <- paste0(params$output_path, "/checklists.RDS")
+filtered_checklists_path <- paste0(params$output_path, "/filtered_checklists.RDS")
+
+if(params$always_import_checklists | !file.exists(checklists_path)){
+  checklists <- import_checklists(file.path(params$erd_path, "erd.db"))
+  saveRDS(checklists, checklists_path)
+}
+
+if(params$always_filter_checklists | !file.exists(filtered_checklists_path)){
+  checklists <- readRDS(checklists_path) %>%
+    filter(latitude > params$extent_space$min_lat &
+             latitude < params$extent_space$max_lat &
+             longitude > params$extent_space$min_lon &
+             longitude < params$extent_space$max_lon &
+             year >= min(params$years) &
+             year <= max(params$years) &
+             ELEV_30M_MEDIAN < params$max_altitude &
+             ((ELEV_30M_MEDIAN < params$max_altitude_above_lat42) | (latitude < 42)) &
+             cci > params$effort_thresholds$cci_min &
+             effort_distance_km <= params$effort_thresholds$dist_max &
+             effort_hrs >= params$effort_thresholds$time_min &
+             effort_hrs <= params$effort_thresholds$time_max
+    ) %>%
+    mutate(
+      seqnum_large = dggridR::dgGEO_to_SEQNUM(
+        grid_large, 
+        .$longitude,
+        .$latitude
+        )[[1]],
+      seqnum_small = dggridR::dgGEO_to_SEQNUM(
+        grid_small, 
+        .$longitude,
+        .$latitude
+        )[[1]]
+      )
+  saveRDS(checklists, filtered_checklists_path)
+} else {
+  checklists <- readRDS(filtered_checklists_path)
+}
+
+```
+
+```{r get-summer-data}
+for(sp in seq_len(nrow(species))){
+  sp_data <- import_from_erd(
+    species$six[sp],
+    erd_path = paste0(params$erd_path, "/erd.db"),
+    checklists = checklists
+    )
+  
+  dir_name <- paste0(params$output_path, "/summer/", species$six[sp])
+  dir.create(dir_name, recursive = TRUE, showWarnings = FALSE)
+
+  summer_data <- list()
+  for (i in seq_len(nrow(params$effort_thresholds))) {
+    summer_data[[i]] <- list()
+    spd3 <- sp_data |>
+      filter(cci > params$effort_thresholds$cci_min[i]) |>
+      filter(effort_distance_km <= params$effort_thresholds$dist_max[i]) |>
+      filter(effort_hrs >= params$effort_thresholds$time_min[i]) |>
+      filter(effort_hrs <= params$effort_thresholds$time_max[i])
+
+    for (y in seq_along(params$years)) {
+      summer_data[[i]][[y]] <- 
+        get_bcr_data(
+          data = spd3, 
+          bcrs = bcrs, 
+          .year = params$years[y],
+          tgrid_min = params$tgrid_min, 
+          tgrid_max = params$tgrid_max, 
+          time_window = "full",
+          min_lat = params$extent_space$min_lat, 
+          max_lat = params$extent_space$max_lat, 
+          min_lon = params$extent_space$min_lon
+          )
+    }
+  }
+
+  saveRDS(summer_data, paste0(dir_name, "/summer_data_fullwindow.RDS"))
+  
+  summer_abun_data <- list()
+  for (i in seq_len(nrow(params$effort_thresholds))) {
+    summer_abun_data[[i]] <- list()
+    for (y in seq_along(params$years)) {
+      summer_abun_data[[i]][[y]] <- 
+        get_abun_bcr(summer_data[[i]][[y]], bcrs2, n_rep = 100)
+    }
+  }
+
+  saveRDS(summer_abun_data, paste0(dir_name, "/summer_abun_data_fullwindow.RDS"))
+}
+
+```
+
+```{r bbs-models}
+# fetch data
+#fetch_bbs_data(force = TRUE)
+stratified_data <- stratify(by = "bcr")
+
+cn_lookup <- data.frame(six = "carwre", eng = "Carolina Wren")
+
+for(sp in seq_len(nrow(species))){
+  bbs_data <- prepare_data(stratified_data,
+                     species_to_run = cn_lookup$eng[cn_lookup$six == species$six[sp]],
+                     min_year = 2006,
+                     max_year = 2019,
+                     min_max_route_years = 5,
+                     model = "gamye",
+                     heavy_tailed = F)
+  bbs_data2 <- as.data.frame(do.call(cbind, bbs_data[c(7:12, 15:18)])) |>
+    mutate(
+      count = as.numeric(count),
+      year = as.numeric(year),
+      row_id = seq_len(length(bbs_data$count))
+      )
+
+  strata <- unique(bbs_data2$strat_name)
+
+  # out <- list()
+  # for(i in seq_along(strata)){
+  #   dd <- bbs_data2 |>
+  #     filter(strat_name == strata[[i]])
+  #   if(length(unique(dd$route)) < 6) {
+  #     out[[i]] <- "no estimation performed"
+  #   } else {
+  #     out[[i]] <-
+  #       brm(
+  #         count ~ s(year) + (1 | row_id) + (1 | year),
+  #         data = dd, 
+  #         family = "poisson",
+  #         adapt_delta = .99999,
+  #         max_treedepth = 12,
+  #         backend = "cmdstanr",
+  #         cores = 4
+  #       )
+  #   }
+  # }
+  # dir_name <- paste0(params$output_path, "/bbs_models/", species$six[sp])
+  # dir.create(dir_name, recursive = TRUE, showWarnings = FALSE)
+  # saveRDS(out, paste0(dir_name, "/brms_fits.RDS"))
+
+  dir_name <- paste0(params$output_path, "/bbs_models/", species$six[sp])
+  out <- readRDS(paste0(dir_name, "/brms_fits.RDS"))
+  
+  include_strata <- sapply(out, \(x){!identical(x, "no estimation performed")})
+  strata2 <- strata[include_strata]
+  out2 <- out[include_strata]
+  
+  linpreds <- list()
+  for(i in seq_along(strata2)){
+    linpreds[[i]] <- matrix(nrow = 4000, ncol = length(params$years))
+    for(j in seq_along(params$years)){
+      linpreds[[i]][, j] <- posterior_linpred(
+        out2[[i]], 
+        newdata = data.frame(year = j, row_id = "dummy"),
+        re_formula = ~ (1 | year)
+      ) |>
+        rowMeans()
+    }
+  }
+  
+  change_stats <- list()
+  
+  change_stats$change_index <- change_stats$change_median <- 
+    change_stats$change_u95 <- change_stats$change_l95 <- 
+    change_stats$change_q5 <- change_stats$change_q95 <- 
+    change_stats$change_q25 <- change_stats$change_q75 <- 
+    change_stats$change_sd <- change_stats$change_mean <- 
+    change_stats$change_skew <- change_stats$change_ex_kurt <- 
+    list()
+  for(i in seq_along(strata2)) {
+    change_stats$change_index[[i]] <- t(apply(linpreds[[i]], 1, diff))
+    change_stats$change_median[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .5)
+    change_stats$change_l95[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .025)
+    change_stats$change_u95[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .975)
+    change_stats$change_q5[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .05)
+    change_stats$change_q95[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .95)
+    change_stats$change_q25[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .25)
+    change_stats$change_q75[[i]] <- 
+      matrixStats::colQuantiles(change_stats$change_index[[i]], probs = .75)
+    change_stats$change_sd[[i]] <- 
+      apply(change_stats$change_index[[i]], 2, sd)
+    change_stats$change_skew[[i]] <- 
+      apply(change_stats$change_index[[i]], 2, moments::skewness)
+    change_stats$change_ex_kurt[[i]] <- 
+      apply(change_stats$change_index[[i]], 2, moments::kurtosis) - 3
+    change_stats$change_mean[[i]] <- 
+      apply(change_stats$change_index[[i]], 2, mean)
+  }
+  saveRDS(change_stats, paste0(dir_name, "/change_stats.RDS"))
+}
+
+```
+
+
+```{r compare-trends}
+for(sp in seq_len(nrow(species))){
+  dir_name <- paste0(params$output_path, "/bbs_models/", species$six[sp])
+  change_stats <- readRDS(paste0(dir_name, "/change_stats.RDS"))
+  
+  dir_name <- paste0(params$output_path, "/summer/", species$six[sp])
+  summer_abun_data <- readRDS(paste0(dir_name, "/summer_abun_data_fullwindow.RDS"))[[1]]
+  
+  assertthat::assert_that(
+    all(as.integer(gsub("BCR", "", strata2)) %in% summer_abun_data[[1]]$cell)
+  )
+  
+  n_index <- length(params$years) - 1
+  overlaps <- data.frame(stratum = rep(strata2, each = n_index),
+                         year = seq_len(n_index),
+                         diff_med = NA,
+                         overlap = NA,
+                         bbs = NA,
+                         bbs_q5 = NA,
+                         bbs_q95 = NA,
+                         bbs_q25 = NA,
+                         bbs_q75 = NA,
+                         ebird = NA,
+                         ebird_q5 = NA,
+                         ebird_q95 = NA,
+                         bbs_mean = NA,
+                         bbs_sd = NA,
+                         bbs_skew = NA, 
+                         bbs_ex_kurt = NA,
+                         ebird_mean = NA,
+                         ebird_sd = NA,
+                         ebird_skew = NA,
+                         ebird_ex_kurt = NA,
+                         unc = NA)
+  
+  
+  for(i in seq_along(strata2)){
+    ymax <- max(change_stats$change_u95[[i]])
+    ymin <- min(change_stats$change_l95[[i]])
+    plot(change_stats$change_median[[i]] ~ params$years[seq_len(n_index)], ylim = c(-1.5, 1.5),
+         xlab = "year",
+         ylab = "change index",
+         main = strata2[i]
+         )
+    for(j in seq_len(n_index)){
+      lines(
+        x = c(params$years[j], params$years[j]), 
+        y = c(change_stats$change_l95[[i]][j], change_stats$change_u95[[i]][j])
+        )
+    }
+    bcrx <- as.integer(gsub("BCR", "", strata2[i]))
+    for(j in seq_len(n_index)){
+      sad1 <- summer_abun_data[[j]]
+      sad1 <- sad1[which(sad1$cell == bcrx), ]
+      sad2 <- summer_abun_data[[j + 1]]
+      sad2 <- sad2[which(sad2$cell == bcrx), ]
+      
+      if(sad1$n_small > 100 & sad2$n_small > 100){
+        lrs <- 
+          log(as.numeric(as.vector(sad2[1, 7:106]))) - 
+          log(as.numeric(as.vector(sad1[1, 7:106])))
+        points(params$years[j] + 0.2, median(lrs), pch = 17)
+        lines(
+          x = c(params$years[j] + 0.2, params$years[j] + 0.2), 
+          y = c(quantile(lrs, .025), quantile(lrs, .975))
+          )
+        
+        overlaps$diff_med[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          median(lrs) - change_stats$change_median[[i]][j]
+        
+        overlaps$overlap[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          100 - max(sum(lrs > change_stats$change_index[[i]][40*c(1:100), j]),
+              sum(lrs < change_stats$change_index[[i]][40*c(1:100), j]))
+        
+        overlaps$bbs[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_median[[i]][j]
+        
+        overlaps$bbs_q5[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_q5[[i]][[j]]
+        overlaps$bbs_q95[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_q95[[i]][[j]]
+        
+        overlaps$bbs_q25[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_q25[[i]][[j]]
+        overlaps$bbs_q75[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_q75[[i]][[j]]
+        
+        overlaps$bbs_mean[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_mean[[i]][[j]]
+        
+        overlaps$bbs_mean[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_mean[[i]][[j]]
+        
+        overlaps$bbs_sd[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_sd[[i]][[j]]
+        
+        overlaps$bbs_skew[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_skew[[i]][[j]]
+        
+        overlaps$bbs_ex_kurt[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          change_stats$change_ex_kurt[[i]][[j]]
+        
+        overlaps$ebird[overlaps$stratum == strata2[i] & overlaps$year == j] <- 
+          median(lrs)
+        
+        overlaps$ebird_mean[overlaps$stratum == strata2[i] & overlaps$year == j] <- 
+          mean(lrs)
+        
+        overlaps$ebird_sd[overlaps$stratum == strata2[i] & overlaps$year == j] <- 
+          sd(lrs)
+        
+        overlaps$ebird_skew[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          moments::skewness(lrs)
+        
+        overlaps$ebird_ex_kurt[overlaps$stratum == strata2[i] & overlaps$year == j] <-
+          moments::kurtosis(lrs) - 3
+        
+        overlaps$unc[overlaps$stratum == strata2[i] & overlaps$year == j] <- 
+          change_stats$change_u95[[i]][j] - change_stats$change_l95[[i]][j] + 
+          quantile(lrs, .95) - quantile(lrs, .05)
+        
+      }
+    }
+  }
+  
+  overlaps_p <- overlaps |>
+    tidyr::pivot_longer(
+      c("bbs_skew", "bbs_ex_kurt", "ebird_skew", "ebird_ex_kurt")
+    )
+  
+  overlaps_p$name <- 
+    factor(
+      overlaps_p$name, 
+      levels=c("bbs_skew", "bbs_ex_kurt", "ebird_skew", "ebird_ex_kurt")
+    )
+  
+  ggplot(overlaps_p, aes(value)) + geom_density() + facet_wrap("name") + 
+    ylab("") + xlab("") +
+    theme(
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  
+  overlaps$alpha <- (1 - overlaps$unc) / max(overlaps$unc, na.rm = T)
+  
+  strata_include <- rep(FALSE, length(strata2))
+  for(i in seq_along(strata2)){
+    overlaps2 <- overlaps %>%
+      filter(stratum == strata2[i]) %>%
+      filter(!is.na(bbs))
+    if(nrow(overlaps2) > 2){ # at least two years for the stratum
+      if(max(overlaps2$bbs_q5) > min(overlaps2$bbs_q95)){ # clear interannual variation
+        strata_include[i] <- TRUE
+      } 
+    }
+  }
+  use_strata2 <- strata2[strata_include]
+  
+  overlaps2 <- overlaps |>
+    filter(
+      !is.na(bbs),
+      is.finite(ebird_mean)
+    )
+
+  out4 <- brm(
+    bbs_mean | resp_se(bbs_sd, sigma = TRUE) ~ 
+      me(ebird_mean, ebird_sd) + (1 + me(ebird_mean, ebird_sd) | stratum),
+    data = overlaps2, backend = 'cmdstanr', cores = 4, adapt_delta = .999,
+    max_treedepth = 10, iter = 12000, warmup = 2000)
+  print(summary(out4))
+  
+  out4.5 <- brm(
+    bbs_mean | resp_se(bbs_sd, sigma = TRUE) ~ 
+      me(ebird_mean, ebird_sd) + (1 | stratum),
+      data = overlaps2, backend = 'cmdstanr', cores = 4, adapt_delta = .999,
+      max_treedepth = 10, iter = 12000, warmup = 2000)
+  print(summary(out4.5))
+  
+  plotting_data <- conditional_effects(
+    out4, 
+    conditions = data.frame(
+      stratum = unique(overlaps2$stratum)
+      ),
+    re_formula = NULL
+    ) %>%
+    do.call(rbind, .) %>%
+    group_by(stratum) %>%
+    rename(
+      bbs = estimate__,
+      ebird = ebird_mean)
+  
+  plotting_data_2.0 <- conditional_effects(
+    out4.5
+  ) %>%
+    do.call(rbind, .) %>%
+    rename(
+      bbs = estimate__,
+      ebird = ebird_mean) %>%
+    mutate(
+      class = "universal slope"
+    )
+  
+  plotting_data_2.1 <- conditional_effects(
+    out4
+  ) %>%
+    do.call(rbind, .) %>%
+    rename(
+      bbs = estimate__,
+      ebird = ebird_mean) %>%
+    mutate(
+      class = "random slopes"
+    )
+  
+  plotting_data_2 <- rbind(plotting_data_2.0, plotting_data_2.1) %>%
+    group_by(class)
+  
+  print(ggplot(
+    plotting_data, 
+    aes(x = ebird, y = bbs, color = stratum, ymin = lower__, ymax = upper__)) + 
+    geom_ribbon(linetype = 0, alpha = .2) + geom_line())
+  
+  print(ggplot(
+    plotting_data_2, 
+    aes(x = ebird, y = bbs, color = class, ymin = lower__, ymax = upper__)) + 
+    geom_ribbon(linetype = 0, alpha = .2) + geom_line())
+  
+  print(ggplot(
+    plotting_data_2.0, 
+    aes(x = ebird, y = bbs, ymin = lower__, ymax = upper__)) + 
+    geom_ribbon(linetype = 0, alpha = .2) + geom_line())
+  
+  
+  print(ggplot(
+    overlaps, 
+    aes(x = ebird, y = bbs, color = stratum, alpha = alpha)) + 
+    geom_point() +
+    geom_smooth(method = lm, se = F))
+  
+  for(i in which(strata2 %in% use_strata2)){
+    print(i)
+    print(conditional_effects(out[[i]], prob = .8, robust = T))
+  }
+  
+  plot(diff_med ~ year, 
+       data = overlaps, 
+       col = viridis::viridis(13)[as.numeric(as.factor(overlaps$stratum))],
+       pch = 16,
+       alpha = overlaps$overlap/50)
+
+}
+
+```
+

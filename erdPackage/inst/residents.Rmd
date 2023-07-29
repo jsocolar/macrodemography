@@ -1,5 +1,5 @@
 ---
-title: "Macrodemography data munging"
+title: "Macrodemography resident analyses"
 author: "Jacob Socolar"
 date: "`r Sys.Date()`"
 output: html_document
